@@ -1,7 +1,20 @@
+import { RiArrowDownSLine } from '@remixicon/react'
 import { useEffect, useState } from 'react'
 import './App.css'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Badge } from '@/components/ui/badge'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
   DialogClose,
@@ -14,6 +27,13 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Table,
   TableBody,
   TableCell,
@@ -21,6 +41,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
 
 type AdminSession = {
   user: {
@@ -114,6 +135,30 @@ const emptyOfferFilters: OfferFilters = {
   readyFrom: '',
   readyTo: '',
 }
+
+const offerFilterOptions: Record<OfferFilter, string> = {
+  open: 'Open quotes',
+  pending: 'Pending review',
+  invalid_needs_revision: 'Needs price revision',
+}
+
+// Each pair renders as a "minimum / maximum" row in the filter panel.
+const offerFilterFields: ReadonlyArray<{
+  key: keyof OfferFilters
+  label: string
+  date?: boolean
+}> = [
+  { key: 'minOfferedPricePerKg', label: 'Minimum offer price · ₹/kg' },
+  { key: 'maxOfferedPricePerKg', label: 'Maximum offer price · ₹/kg' },
+  { key: 'minQuantityQuintals', label: 'Minimum quantity · quintals' },
+  { key: 'maxQuantityQuintals', label: 'Maximum quantity · quintals' },
+  { key: 'minMoisturePercent', label: 'Minimum moisture · %' },
+  { key: 'maxMoisturePercent', label: 'Maximum moisture · %' },
+  { key: 'minBeanCountPer100g', label: 'Minimum bean count · per 100 g' },
+  { key: 'maxBeanCountPer100g', label: 'Maximum bean count · per 100 g' },
+  { key: 'readyFrom', label: 'Ready on or after', date: true },
+  { key: 'readyTo', label: 'Ready on or before', date: true },
+]
 
 const API_BASE_URL = (
   import.meta.env.VITE_API_URL ?? 'http://localhost:8787'
@@ -219,6 +264,10 @@ function App() {
   const [collectionSavingDealId, setCollectionSavingDealId] = useState<string | null>(null)
   const [dealError, setDealError] = useState<string | null>(null)
   const [decisionOfferId, setDecisionOfferId] = useState<string | null>(null)
+  const [acceptingOffer, setAcceptingOffer] = useState<AdminOffer | null>(null)
+  const [rejectingOffer, setRejectingOffer] = useState<AdminOffer | null>(null)
+  const [rejectReason, setRejectReason] = useState('')
+  const [decisionError, setDecisionError] = useState<string | null>(null)
   const [loadingOffers, setLoadingOffers] = useState(false)
   const [offerError, setOfferError] = useState<string | null>(null)
 
@@ -331,38 +380,38 @@ function App() {
   }
 
   async function acceptOffer(offer: AdminOffer) {
-    if (!window.confirm(`Accept this quote from ${offer.farmerPhoneNumber ?? 'this farmer'} and create a deal? The submitted terms will be locked.`)) return
     setDecisionOfferId(offer.id)
-    setOfferError(null)
+    setDecisionError(null)
     try {
       await apiRequest(`/api/admin/offers/${offer.id}/accept`, { method: 'POST' })
       await Promise.all([loadOffers(), loadDeals()])
+      setAcceptingOffer(null)
       setNotice('Quote accepted and deal created with the submitted terms.')
     } catch (requestError) {
-      setOfferError(getErrorMessage(requestError))
+      setDecisionError(getErrorMessage(requestError))
     } finally {
       setDecisionOfferId(null)
     }
   }
 
   async function rejectOffer(offer: AdminOffer) {
-    const reason = window.prompt('Why are you rejecting this quote? A reason is required for the audit record.')
-    if (reason === null) return
-    if (!reason.trim()) {
-      setOfferError('Enter a rejection reason before rejecting the quote.')
+    const reason = rejectReason.trim()
+    if (!reason) {
+      setDecisionError('Enter a rejection reason. It is shown to the farmer and kept in the audit record.')
       return
     }
     setDecisionOfferId(offer.id)
-    setOfferError(null)
+    setDecisionError(null)
     try {
       await apiRequest(`/api/admin/offers/${offer.id}/reject`, {
         method: 'POST',
-        body: { reason: reason.trim() },
+        body: { reason },
       })
       await loadOffers()
+      setRejectingOffer(null)
       setNotice('Quote rejected and the reason recorded.')
     } catch (requestError) {
-      setOfferError(getErrorMessage(requestError))
+      setDecisionError(getErrorMessage(requestError))
     } finally {
       setDecisionOfferId(null)
     }
@@ -473,6 +522,8 @@ function App() {
       setBusy(false)
     }
   }
+
+  const activeFilterCount = Object.values(offerFilters).filter((value) => value.trim() !== '').length
 
   async function applyOfferFilters(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -633,260 +684,265 @@ function App() {
             </aside>
           </div>
 
-          <section className="offers-card">
-            <div className="offers-heading">
-              <div>
-                <p className="eyebrow">FARMER SUBMISSIONS</p>
-                <h2>Quote review queue</h2>
-                <p className="offers-subtitle">
-                  Review the details farmers submitted. The newest 100 matching quotes are shown.
-                </p>
-              </div>
-              <label className="offer-filter">
-                <span>SHOW</span>
-                <select
+          <Card className="mt-6">
+            <CardHeader>
+              <p className="text-[10px] font-medium tracking-widest text-muted-foreground">FARMER SUBMISSIONS</p>
+              <CardTitle className="text-lg">Quote review queue</CardTitle>
+              <CardDescription>
+                Review the details farmers submitted. The newest 100 matching quotes are shown.
+              </CardDescription>
+              <CardAction>
+                <Select
+                  items={offerFilterOptions}
                   value={offerFilter}
-                  onChange={(event) => {
-                    const nextFilter = event.target.value as OfferFilter
-                    setOfferFilter(nextFilter)
-                    void loadOffers(nextFilter)
+                  onValueChange={(value) => {
+                    if (!value) return
+                    setOfferFilter(value)
+                    void loadOffers(value)
                   }}
                 >
-                  <option value="open">Open quotes</option>
-                  <option value="pending">Pending review</option>
-                  <option value="invalid_needs_revision">Needs price revision</option>
-                </select>
-              </label>
-            </div>
+                  <SelectTrigger aria-label="Show quotes" className="min-w-44">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(offerFilterOptions) as OfferFilter[]).map((value) => (
+                      <SelectItem key={value} value={value}>
+                        {offerFilterOptions[value]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </CardAction>
+            </CardHeader>
+            <CardContent className="grid gap-4">
 
-            <details className="offer-filter-details">
-              <summary>Filter by price, quantity, quality, or ready date</summary>
-              <form className="offer-filter-form" onSubmit={applyOfferFilters}>
-                <div className="offer-filter-grid">
-                  <label>
-                    Minimum offer price · ₹/kg
-                    <input
-                      inputMode="decimal"
-                      value={offerFilters.minOfferedPricePerKg}
-                      onChange={(event) =>
-                        setOfferFilters((current) => ({
-                          ...current,
-                          minOfferedPricePerKg: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    Maximum offer price · ₹/kg
-                    <input
-                      inputMode="decimal"
-                      value={offerFilters.maxOfferedPricePerKg}
-                      onChange={(event) =>
-                        setOfferFilters((current) => ({
-                          ...current,
-                          maxOfferedPricePerKg: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    Minimum quantity · quintals
-                    <input
-                      inputMode="decimal"
-                      value={offerFilters.minQuantityQuintals}
-                      onChange={(event) =>
-                        setOfferFilters((current) => ({
-                          ...current,
-                          minQuantityQuintals: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    Maximum quantity · quintals
-                    <input
-                      inputMode="decimal"
-                      value={offerFilters.maxQuantityQuintals}
-                      onChange={(event) =>
-                        setOfferFilters((current) => ({
-                          ...current,
-                          maxQuantityQuintals: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    Minimum moisture · %
-                    <input
-                      inputMode="decimal"
-                      value={offerFilters.minMoisturePercent}
-                      onChange={(event) =>
-                        setOfferFilters((current) => ({
-                          ...current,
-                          minMoisturePercent: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    Maximum moisture · %
-                    <input
-                      inputMode="decimal"
-                      value={offerFilters.maxMoisturePercent}
-                      onChange={(event) =>
-                        setOfferFilters((current) => ({
-                          ...current,
-                          maxMoisturePercent: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    Minimum bean count · per 100 g
-                    <input
-                      inputMode="decimal"
-                      value={offerFilters.minBeanCountPer100g}
-                      onChange={(event) =>
-                        setOfferFilters((current) => ({
-                          ...current,
-                          minBeanCountPer100g: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    Maximum bean count · per 100 g
-                    <input
-                      inputMode="decimal"
-                      value={offerFilters.maxBeanCountPer100g}
-                      onChange={(event) =>
-                        setOfferFilters((current) => ({
-                          ...current,
-                          maxBeanCountPer100g: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    Ready on or after
-                    <input
-                      inputMode="numeric"
-                      placeholder="DD-MM-YYYY"
-                      value={offerFilters.readyFrom}
-                      onChange={(event) =>
-                        setOfferFilters((current) => ({
-                          ...current,
-                          readyFrom: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    Ready on or before
-                    <input
-                      inputMode="numeric"
-                      placeholder="DD-MM-YYYY"
-                      value={offerFilters.readyTo}
-                      onChange={(event) =>
-                        setOfferFilters((current) => ({
-                          ...current,
-                          readyTo: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                </div>
-                <div className="offer-filter-actions">
-                  <button type="submit" className="filter-apply-button">
-                    Apply filters
-                  </button>
-                  <button type="button" className="filter-clear-button" onClick={clearOfferFilters}>
-                    Clear
-                  </button>
-                </div>
-              </form>
-            </details>
+            <Collapsible className="border">
+              <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium hover:bg-muted">
+                <span>
+                  Filter by price, quantity, quality, or ready date
+                  {activeFilterCount > 0 ? (
+                    <Badge variant="secondary" className="ml-2">{activeFilterCount} active</Badge>
+                  ) : null}
+                </span>
+                <RiArrowDownSLine className="size-4 transition-transform in-data-[panel-open]:rotate-180" aria-hidden />
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <form className="grid gap-4 border-t p-3" onSubmit={applyOfferFilters}>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {offerFilterFields.map((field) => (
+                      <div key={field.key} className="grid gap-1.5">
+                        <Label htmlFor={`filter-${field.key}`} className="text-muted-foreground">
+                          {field.label}
+                        </Label>
+                        <Input
+                          id={`filter-${field.key}`}
+                          inputMode={field.date ? 'numeric' : 'decimal'}
+                          maxLength={field.date ? 10 : undefined}
+                          placeholder={field.date ? 'DD-MM-YYYY' : undefined}
+                          value={offerFilters[field.key]}
+                          onChange={(event) =>
+                            setOfferFilters((current) => ({ ...current, [field.key]: event.target.value }))
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button type="submit" size="sm">Apply filters</Button>
+                    <Button type="button" size="sm" variant="outline" onClick={clearOfferFilters}>
+                      Clear
+                    </Button>
+                  </div>
+                </form>
+              </CollapsibleContent>
+            </Collapsible>
 
             {loadingOffers ? (
-              <div className="offers-state">Loading submitted quotes…</div>
+              <div className="flex min-h-32 items-center justify-center border border-dashed text-xs text-muted-foreground">
+                Loading submitted quotes…
+              </div>
             ) : offerError ? (
-              <div className="offers-state offers-error" role="alert">
+              <div className="flex min-h-32 items-center justify-center gap-3 border border-dashed text-xs text-destructive" role="alert">
                 <span>{offerError}</span>
-                <button className="text-button" onClick={() => void loadOffers()}>
+                <Button size="xs" variant="outline" onClick={() => void loadOffers()}>
                   Retry
-                </button>
+                </Button>
               </div>
             ) : offers.length === 0 ? (
-              <div className="offers-state">
+              <div className="flex min-h-32 items-center justify-center border border-dashed text-xs text-muted-foreground">
                 No quotes in this view yet.
               </div>
             ) : (
-              <div className="offers-table-scroll">
-                <table className="offers-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">FARMER</th>
-                      <th scope="col">OFFER / KG</th>
-                      <th scope="col">QUANTITY</th>
-                      <th scope="col">MOISTURE</th>
-                      <th scope="col">BEANS / 100 G</th>
-                      <th scope="col">READY DATE</th>
-                      <th scope="col">SUBMITTED</th>
-                      <th scope="col">STATUS</th>
-                      <th scope="col">DECISION</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {offers.map((offer) => (
-                      <tr key={offer.id}>
-                        <td className="farmer-cell">
-                          <strong>{offer.farmerPhoneNumber ?? 'Unknown phone'}</strong>
-                          <span>Verified farmer</span>
-                        </td>
-                        <td className="offer-price-cell">
-                          <strong>₹{offer.offeredPricePerKg}</strong>
-                          <span>Base ₹{formatPrice(offer.basePricePerKg)} / kg</span>
-                        </td>
-                        <td className="quantity-cell">
-                          <strong>{offer.quantityQuintals}</strong>
-                          <span>quintals</span>
-                        </td>
-                        <td>{offer.moisturePercent}%</td>
-                        <td>{offer.beanCountPer100g}</td>
-                        <td>{formatDateForIndia(offer.readyOn)}</td>
-                        <td>{formatSubmittedAt(offer.submittedAt)}</td>
-                        <td>
-                          <span className={`offer-status offer-status-${offer.status}`}>
-                            {offer.status === 'pending' ? 'Pending review' : 'Needs revision'}
-                          </span>
-                        </td>
-                        <td className="offer-actions-cell">
-                          <button
-                            className="offer-accept-button"
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Farmer</TableHead>
+                    <TableHead className="text-right">Offer / kg</TableHead>
+                    <TableHead className="text-right">Quantity</TableHead>
+                    <TableHead className="text-right">Moisture</TableHead>
+                    <TableHead className="text-right">Beans / 100 g</TableHead>
+                    <TableHead>Ready date</TableHead>
+                    <TableHead>Submitted</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>
+                      <span className="sr-only">Decision</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {offers.map((offer) => (
+                    <TableRow key={offer.id}>
+                      <TableCell>
+                        <span className="font-medium">{offer.farmerPhoneNumber ?? 'Unknown phone'}</span>
+                        <span className="block text-[10px] text-muted-foreground">Verified farmer</span>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        <span className="font-medium">₹{offer.offeredPricePerKg}</span>
+                        <span className="block text-[10px] text-muted-foreground">
+                          Base ₹{formatPrice(offer.basePricePerKg)} / kg
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{offer.quantityQuintals} qtl</TableCell>
+                      <TableCell className="text-right tabular-nums">{offer.moisturePercent}%</TableCell>
+                      <TableCell className="text-right tabular-nums">{offer.beanCountPer100g}</TableCell>
+                      <TableCell>{formatDateForIndia(offer.readyOn)}</TableCell>
+                      <TableCell>{formatSubmittedAt(offer.submittedAt)}</TableCell>
+                      <TableCell>
+                        {offer.status === 'pending' ? (
+                          <Badge variant="secondary">Pending review</Badge>
+                        ) : (
+                          <Badge variant="destructive">Needs revision</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div
+                          className="flex flex-col items-stretch gap-1"
+                          title={offer.status !== 'pending' ? 'Only pending quotes can be accepted' : undefined}
+                        >
+                          <Button
+                            size="xs"
                             disabled={decisionOfferId !== null || offer.status !== 'pending'}
-                            onClick={() => void acceptOffer(offer)}
+                            onClick={() => {
+                              setDecisionError(null)
+                              setAcceptingOffer(offer)
+                            }}
                           >
-                            {decisionOfferId === offer.id ? 'Saving…' : 'Accept & create deal'}
-                          </button>
-                          <button
-                            className="offer-reject-button"
+                            Accept & create deal
+                          </Button>
+                          <Button
+                            size="xs"
+                            variant="outline"
                             disabled={decisionOfferId !== null}
-                            onClick={() => void rejectOffer(offer)}
+                            onClick={() => {
+                              setDecisionError(null)
+                              setRejectReason('')
+                              setRejectingOffer(offer)
+                            }}
                           >
                             Reject
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             )}
-            <p className="offers-footnote">
+            <p className="text-xs text-muted-foreground">
               Quantity is shown in quintals for every farmer. Moisture and bean count are self-reported.
               Acceptance creates a deal and locks the submitted price, quantity, quality details, and ready date.
             </p>
-          </section>
+            </CardContent>
+          </Card>
+
+          <AlertDialog
+            open={acceptingOffer !== null}
+            onOpenChange={(open) => {
+              if (!open && decisionOfferId === null) setAcceptingOffer(null)
+            }}
+          >
+            <AlertDialogContent>
+              {acceptingOffer ? (
+                <>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Accept quote and create deal?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      These terms from {acceptingOffer.farmerPhoneNumber ?? 'this farmer'} will be locked into the deal,
+                      even if the base price changes later.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-1 bg-muted px-3 py-2 text-xs">
+                    <dt className="text-muted-foreground">Price</dt>
+                    <dd className="text-right tabular-nums">₹{acceptingOffer.offeredPricePerKg} / kg</dd>
+                    <dt className="text-muted-foreground">Quantity</dt>
+                    <dd className="text-right tabular-nums">{acceptingOffer.quantityQuintals} quintals</dd>
+                    <dt className="text-muted-foreground">Moisture</dt>
+                    <dd className="text-right tabular-nums">{acceptingOffer.moisturePercent}%</dd>
+                    <dt className="text-muted-foreground">Bean count</dt>
+                    <dd className="text-right tabular-nums">{acceptingOffer.beanCountPer100g} per 100 g</dd>
+                    <dt className="text-muted-foreground">Ready date</dt>
+                    <dd className="text-right tabular-nums">{formatDateForIndia(acceptingOffer.readyOn)}</dd>
+                  </dl>
+                  {decisionError ? <p className="text-xs text-destructive" role="alert">{decisionError}</p> : null}
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={decisionOfferId !== null}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      disabled={decisionOfferId !== null}
+                      onClick={() => void acceptOffer(acceptingOffer)}
+                    >
+                      {decisionOfferId === acceptingOffer.id ? 'Accepting…' : 'Accept & create deal'}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </>
+              ) : null}
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <Dialog
+            open={rejectingOffer !== null}
+            onOpenChange={(open) => {
+              if (!open && decisionOfferId === null) setRejectingOffer(null)
+            }}
+          >
+            <DialogContent className="sm:max-w-md">
+              {rejectingOffer ? (
+                <form
+                  className="grid gap-4"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    void rejectOffer(rejectingOffer)
+                  }}
+                >
+                  <DialogHeader>
+                    <DialogTitle>Reject quote</DialogTitle>
+                    <DialogDescription>
+                      Quote from {rejectingOffer.farmerPhoneNumber ?? 'this farmer'}: ₹{rejectingOffer.offeredPricePerKg} / kg
+                      for {rejectingOffer.quantityQuintals} quintals. The farmer sees your reason in My quotes.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-2">
+                    <Label htmlFor="reject-reason">Reason</Label>
+                    <Textarea
+                      id="reject-reason"
+                      rows={3}
+                      placeholder="For example: moisture is too high for this week's buying."
+                      value={rejectReason}
+                      onChange={(event) => setRejectReason(event.target.value)}
+                    />
+                  </div>
+                  {decisionError ? <p className="text-xs text-destructive" role="alert">{decisionError}</p> : null}
+                  <DialogFooter>
+                    <DialogClose render={<Button type="button" variant="outline" disabled={decisionOfferId !== null} />}>
+                      Cancel
+                    </DialogClose>
+                    <Button type="submit" variant="destructive" disabled={decisionOfferId !== null}>
+                      {decisionOfferId === rejectingOffer.id ? 'Rejecting…' : 'Reject quote'}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              ) : null}
+            </DialogContent>
+          </Dialog>
 
           <Card className="mt-6">
             <CardHeader>

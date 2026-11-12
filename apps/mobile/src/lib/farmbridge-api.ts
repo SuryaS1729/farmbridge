@@ -82,7 +82,9 @@ async function request<T>(path: string, options: { method: "GET" | "POST"; body?
   });
 
   if (result.error) {
-    throw new Error(result.error.message || "The request could not be completed.");
+    // Our API sends `{ error: "..." }`; Better Auth's own errors use `message`.
+    const apiError = result.error as { error?: string; message?: string };
+    throw new Error(apiError.error || apiError.message || "The request could not be completed.");
   }
 
   if (result.data === null || result.data === undefined) {
