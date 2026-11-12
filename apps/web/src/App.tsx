@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import './App.css'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
   DialogClose,
@@ -12,6 +13,14 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 
 type AdminSession = {
   user: {
@@ -879,93 +888,116 @@ function App() {
             </p>
           </section>
 
-          <section className="offers-card deals-card">
-            <div className="offers-heading">
-              <div>
-                <p className="eyebrow">ACCEPTED QUOTES</p>
-                <h2>Deals</h2>
-                <p className="offers-subtitle">The newest 100 deals, with terms copied from the accepted quote.</p>
-              </div>
-            </div>
-            {deals.length === 0 ? (
-              <div className="offers-state">No deals have been created yet.</div>
-            ) : (
-              <div className="offers-table-scroll">
-                <table className="offers-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">FARMER</th>
-                      <th scope="col">PRICE / KG</th>
-                      <th scope="col">QUANTITY</th>
-                      <th scope="col">MOISTURE</th>
-                      <th scope="col">BEANS / 100 G</th>
-                      <th scope="col">READY DATE</th>
-                      <th scope="col">ACCEPTED</th>
-                      <th scope="col">FARMER PICKUP LOCATION</th>
-                      <th scope="col">SCHEDULED PICKUP</th>
-                      <th scope="col">COLLECTED</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {deals.map((deal) => (
-                      <tr key={deal.id}>
-                        <td className="farmer-cell">
-                          <strong>{deal.farmerPhoneNumber ?? 'Unknown phone'}</strong>
-                          <button
-                            type="button"
-                            className="pickup-action-link"
-                            disabled={!deal.pickupLocation || deal.status !== 'open'}
-                            title={!deal.pickupLocation ? 'Waiting for farmer to share a pickup location' : undefined}
-                            onClick={() => {
-                              setPickupEditingDealId(deal.id)
-                              setPickupInputs((current) => ({
-                                ...current,
-                                [deal.id]: current[deal.id] ?? (deal.pickupScheduledOn ? formatDateForIndia(deal.pickupScheduledOn) : ''),
-                              }))
-                              setDealError(null)
-                            }}
-                          >
-                            {deal.pickupScheduledOn ? 'Reschedule pickup' : 'Schedule pickup'}
-                          </button>
-                          <button
-                            type="button"
-                            className="pickup-action-link"
-                            disabled={!deal.pickupLocation || deal.status !== 'open'}
-                            title={!deal.pickupLocation ? 'Waiting for farmer to share a pickup location' : undefined}
-                            onClick={() => openCollectionEditor(deal)}
-                          >
-                            {deal.collectedOn ? 'Edit collection' : 'Record collection'}
-                          </button>
-                        </td>
-                        <td>₹{deal.offeredPricePerKg}</td>
-                        <td>{deal.quantityQuintals} quintals</td>
-                        <td>{deal.moisturePercent}%</td>
-                        <td>{deal.beanCountPer100g}</td>
-                        <td>{formatDateForIndia(deal.readyOn)}</td>
-                        <td>{formatSubmittedAt(deal.acceptedAt)}</td>
-                        <td className="pickup-location-cell">
-                          {deal.pickupLocation ?? 'Waiting for farmer to share location'}
-                        </td>
-                        <td>
-                          {deal.pickupScheduledOn ? formatDateForIndia(deal.pickupScheduledOn) : 'Not scheduled'}
-                          <span className="pickup-ready-note">Farmer ready: {formatDateForIndia(deal.readyOn)}</span>
-                        </td>
-                        <td>
-                          {deal.collectedOn && deal.collectedWeightQuintals ? (
-                            <>
-                              {deal.collectedWeightQuintals} quintals
-                              <span className="pickup-ready-note">On {formatDateForIndia(deal.collectedOn)}</span>
-                            </>
-                          ) : 'Not collected'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {dealError && !pickupEditingDealId && !collectionEditingDealId ? <p className="offers-error" role="alert">{dealError}</p> : null}
-          </section>
+          <Card className="mt-6">
+            <CardHeader>
+              <p className="text-[10px] font-medium tracking-widest text-muted-foreground">ACCEPTED QUOTES</p>
+              <CardTitle className="text-lg">Deals</CardTitle>
+              <CardDescription>The newest 100 deals, with terms copied from the accepted quote.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {deals.length === 0 ? (
+                <div className="flex min-h-32 items-center justify-center border border-dashed text-xs text-muted-foreground">
+                  No deals have been created yet.
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Farmer</TableHead>
+                      <TableHead className="text-right">Price / kg</TableHead>
+                      <TableHead className="text-right">Quantity</TableHead>
+                      <TableHead className="text-right">Moisture</TableHead>
+                      <TableHead className="text-right">Beans / 100 g</TableHead>
+                      <TableHead>Accepted</TableHead>
+                      <TableHead>Pickup location</TableHead>
+                      <TableHead>Scheduled pickup</TableHead>
+                      <TableHead>Collected</TableHead>
+                      <TableHead>
+                        <span className="sr-only">Actions</span>
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {deals.map((deal) => {
+                      const canAct = Boolean(deal.pickupLocation) && deal.status === 'open'
+                      const blockedReason = !deal.pickupLocation
+                        ? 'Waiting for farmer to share a pickup location'
+                        : deal.status !== 'open'
+                          ? 'This deal is no longer open'
+                          : undefined
+                      return (
+                        <TableRow key={deal.id}>
+                          <TableCell className="font-medium">{deal.farmerPhoneNumber ?? 'Unknown phone'}</TableCell>
+                          <TableCell className="text-right tabular-nums">₹{deal.offeredPricePerKg}</TableCell>
+                          <TableCell className="text-right tabular-nums">{deal.quantityQuintals} qtl</TableCell>
+                          <TableCell className="text-right tabular-nums">{deal.moisturePercent}%</TableCell>
+                          <TableCell className="text-right tabular-nums">{deal.beanCountPer100g}</TableCell>
+                          <TableCell>{formatSubmittedAt(deal.acceptedAt)}</TableCell>
+                          <TableCell className="max-w-72 min-w-52 whitespace-normal">
+                            {deal.pickupLocation ?? (
+                              <span className="text-muted-foreground">Waiting for farmer to share location</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {deal.pickupScheduledOn ? (
+                              formatDateForIndia(deal.pickupScheduledOn)
+                            ) : (
+                              <span className="text-muted-foreground">Not scheduled</span>
+                            )}
+                            <span className="block text-[10px] text-muted-foreground">
+                              Farmer ready: {formatDateForIndia(deal.readyOn)}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            {deal.collectedOn && deal.collectedWeightQuintals ? (
+                              <>
+                                {deal.collectedWeightQuintals} qtl
+                                <span className="block text-[10px] text-muted-foreground">
+                                  On {formatDateForIndia(deal.collectedOn)}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-muted-foreground">Not collected</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col items-stretch gap-1" title={blockedReason}>
+                              <Button
+                                size="xs"
+                                variant="outline"
+                                disabled={!canAct}
+                                onClick={() => {
+                                  setPickupEditingDealId(deal.id)
+                                  setPickupInputs((current) => ({
+                                    ...current,
+                                    [deal.id]: current[deal.id] ?? (deal.pickupScheduledOn ? formatDateForIndia(deal.pickupScheduledOn) : ''),
+                                  }))
+                                  setDealError(null)
+                                }}
+                              >
+                                {deal.pickupScheduledOn ? 'Reschedule pickup' : 'Schedule pickup'}
+                              </Button>
+                              <Button
+                                size="xs"
+                                variant={deal.collectedOn ? 'outline' : 'default'}
+                                disabled={!canAct}
+                                onClick={() => openCollectionEditor(deal)}
+                              >
+                                {deal.collectedOn ? 'Edit collection' : 'Record collection'}
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+              {dealError && !pickupEditingDealId && !collectionEditingDealId ? (
+                <p className="mt-3 text-xs text-destructive" role="alert">{dealError}</p>
+              ) : null}
+            </CardContent>
+          </Card>
         </section>
         <Dialog
           open={pickupEditingDealId !== null}

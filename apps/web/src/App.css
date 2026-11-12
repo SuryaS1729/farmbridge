@@ -449,51 +449,6 @@
   cursor: wait;
 }
 
-.deals-card {
-  margin-top: 22px;
-}
-
-.pickup-date-cell {
-  min-width: 190px;
-}
-
-.pickup-action-link {
-  display: block;
-  margin-top: 5px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: #245a40;
-  font: inherit;
-  font-size: 10px;
-  font-weight: 700;
-  text-align: left;
-  cursor: pointer;
-}
-
-.pickup-action-link:hover:not(:disabled) {
-  text-decoration: underline;
-}
-
-.pickup-action-link:disabled {
-  color: #879188;
-  cursor: not-allowed;
-}
-
-.pickup-location-cell {
-  min-width: 220px;
-  max-width: 340px;
-  white-space: normal;
-  line-height: 1.45;
-}
-
-.pickup-ready-note {
-  display: block;
-  margin-top: 5px;
-  color: #879188;
-  font-size: 10px;
-}
-
 .offers-state {
   min-height: 130px;
   display: flex;
