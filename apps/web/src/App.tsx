@@ -11,6 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Button } from '@/components/ui/button'
@@ -25,6 +26,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from '@/components/ui/input-group'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -605,82 +607,95 @@ function App() {
             </div>
           </div>
 
-          <div className="dashboard-grid">
-            <section className="price-card">
-              <div className="card-heading">
-                <div>
-                  <p className="eyebrow">DAILY BASE PRICE</p>
-                  <h2>Today’s Cocoa price</h2>
+          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.65fr)_minmax(260px,0.85fr)]">
+            <Card>
+              <CardHeader>
+                <p className="text-[10px] font-medium tracking-widest text-muted-foreground">DAILY BASE PRICE</p>
+                <CardTitle className="text-lg">Today’s Cocoa price</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-5">
+                <div aria-live="polite">
+                  {today?.price ? (
+                    <p className="flex items-baseline gap-1 font-heading tabular-nums">
+                      <span className="text-xl text-muted-foreground">₹</span>
+                      <span className="text-4xl">{today.price.basePricePerQuintal}</span>
+                      <span className="text-sm text-muted-foreground">/ quintal</span>
+                    </p>
+                  ) : (
+                    <p className="font-heading text-2xl text-muted-foreground">Not published yet</p>
+                  )}
                 </div>
-                <span className="cocoa-icon" aria-hidden="true">C</span>
-              </div>
 
-              <div className="current-price" aria-live="polite">
-                {today?.price ? (
-                  <>
-                    <span className="currency">₹</span>
-                    <span>{today.price.basePricePerQuintal}</span>
-                    <span className="price-unit">/ quintal</span>
-                  </>
-                ) : (
-                  <span className="empty-price">Not published yet</span>
-                )}
-              </div>
-
-              <p className="card-copy">
-                Enter the daily base price per quintal. The API converts it to
-                the equivalent price per kg for the farmer app and quote checks.
-              </p>
-
-              <form className="price-form" onSubmit={publishPrice}>
-                <label htmlFor="price">Daily base price <span>(INR per quintal)</span></label>
-                <div className="price-input-wrap">
-                  <span aria-hidden="true">₹</span>
-                  <input
-                    id="price"
-                    type="text"
-                    inputMode="decimal"
-                    autoComplete="off"
-                    placeholder="e.g. 25000.00"
-                    value={priceInput}
-                    onChange={(event) => setPriceInput(event.target.value)}
-                    aria-describedby="price-help"
-                  />
-                  <span className="input-unit">per quintal</span>
-                </div>
-                <p id="price-help" className="field-help">
-                  Up to two decimal places. Publishing again updates today’s
-                  price and records a revision.
+                <p className="text-xs/relaxed text-muted-foreground">
+                  Enter the daily base price per quintal. The API converts it to
+                  the equivalent price per kg for the farmer app and quote checks.
                 </p>
-                <button className="primary-button" type="submit" disabled={busy}>
-                  {busy ? 'Publishing…' : today?.price ? 'Update today’s price' : 'Publish today’s price'}
-                  {!busy && <span aria-hidden="true">↗</span>}
-                </button>
-              </form>
 
-              {error && <p className="message message-error" role="alert">{error}</p>}
-              {notice && <p className="message message-success" role="status">{notice}</p>}
-            </section>
+                <form className="grid gap-2" onSubmit={publishPrice}>
+                  <Label htmlFor="price">
+                    Daily base price <span className="text-muted-foreground">(INR per quintal)</span>
+                  </Label>
+                  <InputGroup>
+                    <InputGroupAddon>
+                      <InputGroupText>₹</InputGroupText>
+                    </InputGroupAddon>
+                    <InputGroupInput
+                      id="price"
+                      type="text"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      placeholder="e.g. 25000.00"
+                      value={priceInput}
+                      onChange={(event) => setPriceInput(event.target.value)}
+                      aria-describedby="price-help"
+                    />
+                    <InputGroupAddon align="inline-end">
+                      <InputGroupText>per quintal</InputGroupText>
+                    </InputGroupAddon>
+                  </InputGroup>
+                  <p id="price-help" className="text-[11px] text-muted-foreground">
+                    Up to two decimal places. Publishing again updates today’s
+                    price and records a revision.
+                  </p>
+                  <Button type="submit" className="mt-2 w-fit" disabled={busy}>
+                    {busy ? 'Publishing…' : today?.price ? 'Update today’s price' : 'Publish today’s price'}
+                  </Button>
+                </form>
 
-            <aside className="side-column">
-              <section className="info-card">
-                <span className="info-icon" aria-hidden="true">↗</span>
-                <p className="eyebrow">PRICE RULE</p>
-                <h3>Farmers see the per‑kg equivalent</h3>
-                <p>
-                  Farmer offers are entered per kg. The API compares each offer
-                  against this quintal price converted to kg. A price increase
-                  flags affected pending offers for revision.
-                </p>
-              </section>
-              <section className="session-card">
-                <span className="session-icon" aria-hidden="true">✓</span>
-                <div>
-                  <p className="eyebrow">SIGNED IN AS ADMIN</p>
-                  <strong>{session.user.phoneNumber ?? phoneNumber}</strong>
-                  <span>Phone verified</span>
-                </div>
-              </section>
+                {error ? (
+                  <Alert variant="destructive" role="alert">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                ) : null}
+                {notice ? (
+                  <Alert role="status">
+                    <AlertDescription>{notice}</AlertDescription>
+                  </Alert>
+                ) : null}
+              </CardContent>
+            </Card>
+
+            <aside className="grid gap-6">
+              <Card>
+                <CardHeader>
+                  <p className="text-[10px] font-medium tracking-widest text-muted-foreground">PRICE RULE</p>
+                  <CardTitle>Farmers see the per‑kg equivalent</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xs/relaxed text-muted-foreground">
+                    Farmer offers are entered per kg. The API compares each offer
+                    against this quintal price converted to kg. A price increase
+                    flags affected pending offers for revision.
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <p className="text-[10px] font-medium tracking-widest text-muted-foreground">SIGNED IN AS ADMIN</p>
+                  <CardTitle className="tabular-nums">{session.user.phoneNumber ?? phoneNumber}</CardTitle>
+                  <CardDescription>Phone verified</CardDescription>
+                </CardHeader>
+              </Card>
             </aside>
           </div>
 
