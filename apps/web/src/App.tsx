@@ -1,6 +1,6 @@
 import { RiArrowDownSLine, RiLogoutBoxRLine } from '@remixicon/react'
+import { REGEXP_ONLY_DIGITS } from 'input-otp'
 import { useEffect, useState } from 'react'
-import './App.css'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,7 +15,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Button } from '@/components/ui/button'
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
   DialogClose,
@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp'
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from '@/components/ui/input-group'
 import { Label } from '@/components/ui/label'
 import {
@@ -569,9 +570,11 @@ function App() {
 
   if (loading) {
     return (
-      <main className="loading-screen" aria-live="polite">
-        <span className="loading-mark" aria-hidden="true">F</span>
-        <p>Opening Farmbridge…</p>
+      <main className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background" aria-live="polite">
+        <span className="flex size-10 animate-pulse items-center justify-center bg-primary font-heading text-primary-foreground" aria-hidden="true">
+          F
+        </span>
+        <p className="text-xs text-muted-foreground">Opening Farmbridge…</p>
       </main>
     )
   }
@@ -1214,104 +1217,127 @@ function App() {
   }
 
   return (
-    <main className="login-shell">
-      <aside className="login-story">
-        <a className="brand brand-light" href="/" aria-label="Farmbridge home">
-          <span className="brand-mark" aria-hidden="true">F</span>
+    <main className="grid min-h-screen bg-background lg:grid-cols-2">
+      <aside className="hidden flex-col justify-between bg-primary p-10 text-primary-foreground lg:flex">
+        <a className="flex items-center gap-2 font-heading text-sm" href="/" aria-label="Farmbridge home">
+          <span className="flex size-7 items-center justify-center bg-primary-foreground text-xs text-primary" aria-hidden="true">
+            F
+          </span>
           <span>farmbridge</span>
         </a>
-        <div className="story-copy">
-          <p className="eyebrow">COCOA PROCUREMENT</p>
-          <h1>Good work starts with a fair price.</h1>
-          <p>
+        <div className="grid max-w-md gap-4">
+          <p className="text-[10px] font-medium tracking-widest opacity-70">COCOA PROCUREMENT</p>
+          <h1 className="font-heading text-4xl/tight">Good work starts with a fair price.</h1>
+          <p className="text-sm/relaxed opacity-80">
             Publish the day’s Cocoa base price and give every farmer a clear
             place to begin.
           </p>
         </div>
-        <div className="story-bottom">
-          <div className="story-stat"><strong>01</strong><span>Daily price</span></div>
-          <div className="story-divider" />
-          <div className="story-stat"><strong>INR</strong><span>Price per quintal</span></div>
+        <div className="flex items-center gap-6 text-xs">
+          <div className="grid gap-1">
+            <strong className="font-heading text-lg">01</strong>
+            <span className="opacity-70">Daily price</span>
+          </div>
+          <div className="h-10 w-px bg-primary-foreground/20" />
+          <div className="grid gap-1">
+            <strong className="font-heading text-lg">INR</strong>
+            <span className="opacity-70">Price per quintal</span>
+          </div>
         </div>
       </aside>
 
-      <section className="login-panel">
-        <div className="login-card">
-          <div className="mobile-brand brand">
-            <span className="brand-mark" aria-hidden="true">F</span>
-            <span>farmbridge</span>
-          </div>
-          <p className="eyebrow">ADMIN ACCESS</p>
-          <h2>{otpSent ? 'Check your phone.' : 'Welcome back.'}</h2>
-          <p className="login-subtitle">
-            {otpSent
-              ? 'Enter the six-digit verification code to continue.'
-              : 'Sign in to publish today’s Cocoa base price.'}
-          </p>
+      <section className="flex items-center justify-center p-4 sm:p-8">
+        <Card className="w-full max-w-sm">
+          <CardHeader>
+            <div className="mb-4 flex items-center gap-2 font-heading text-sm lg:hidden">
+              <span className="flex size-7 items-center justify-center bg-primary text-xs text-primary-foreground" aria-hidden="true">
+                F
+              </span>
+              <span>farmbridge</span>
+            </div>
+            <p className="text-[10px] font-medium tracking-widest text-muted-foreground">ADMIN ACCESS</p>
+            <CardTitle className="text-xl">{otpSent ? 'Check your phone.' : 'Welcome back.'}</CardTitle>
+            <CardDescription>
+              {otpSent
+                ? 'Enter the six-digit verification code to continue.'
+                : 'Sign in to publish today’s Cocoa base price.'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            {otpSent ? (
+              <form className="grid gap-3" onSubmit={verifyOtp}>
+                <Label htmlFor="otp">Verification code</Label>
+                <InputOTP
+                  id="otp"
+                  maxLength={6}
+                  pattern={REGEXP_ONLY_DIGITS}
+                  value={otp}
+                  onChange={setOtp}
+                  autoFocus
+                >
+                  <InputOTPGroup>
+                    {[0, 1, 2, 3, 4, 5].map((index) => (
+                      <InputOTPSlot key={index} index={index} />
+                    ))}
+                  </InputOTPGroup>
+                </InputOTP>
+                <p className="text-[11px] text-muted-foreground">
+                  Local development codes are printed in the API terminal.
+                </p>
+                <Button type="submit" disabled={busy}>
+                  {busy ? 'Verifying…' : 'Verify and continue'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setOtpSent(false)
+                    setOtp('')
+                    setError(null)
+                    setNotice(null)
+                  }}
+                >
+                  Use a different number
+                </Button>
+              </form>
+            ) : (
+              <form className="grid gap-3" onSubmit={sendOtp}>
+                <Label htmlFor="phone">Admin mobile number</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  autoComplete="tel"
+                  value={phoneNumber}
+                  onChange={(event) => setPhoneNumber(event.target.value)}
+                  placeholder="+919491234567"
+                  required
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Use the phone number authorized for the administrator account.
+                </p>
+                <Button type="submit" disabled={busy}>
+                  {busy ? 'Sending code…' : 'Send one-time code'}
+                </Button>
+              </form>
+            )}
 
-          {otpSent ? (
-            <form className="login-form" onSubmit={verifyOtp}>
-              <label htmlFor="otp">Verification code</label>
-              <input
-                id="otp"
-                className="otp-input"
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={6}
-                placeholder="000000"
-                value={otp}
-                onChange={(event) => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))}
-                autoFocus
-              />
-              <p className="field-help">
-                Local development codes are printed in the API terminal.
-              </p>
-              <button className="primary-button" type="submit" disabled={busy}>
-                {busy ? 'Verifying…' : 'Verify and continue'}
-                {!busy && <span aria-hidden="true">→</span>}
-              </button>
-              <button
-                className="back-button"
-                type="button"
-                onClick={() => {
-                  setOtpSent(false)
-                  setOtp('')
-                  setError(null)
-                  setNotice(null)
-                }}
-              >
-                Use a different number
-              </button>
-            </form>
-          ) : (
-            <form className="login-form" onSubmit={sendOtp}>
-              <label htmlFor="phone">Admin mobile number</label>
-              <input
-                id="phone"
-                type="tel"
-                autoComplete="tel"
-                value={phoneNumber}
-                onChange={(event) => setPhoneNumber(event.target.value)}
-                placeholder="+919491234567"
-                required
-              />
-              <p className="field-help">
-                Use the phone number authorized for the administrator account.
-              </p>
-              <button className="primary-button" type="submit" disabled={busy}>
-                {busy ? 'Sending code…' : 'Send one-time code'}
-                {!busy && <span aria-hidden="true">→</span>}
-              </button>
-            </form>
-          )}
-
-          {error && <p className="message message-error" role="alert">{error}</p>}
-          {notice && <p className="message message-success" role="status">{notice}</p>}
-          <p className="login-footnote">
-            Access is limited to the server-authorized administrator phone.
-          </p>
-        </div>
+            {error ? (
+              <Alert variant="destructive" role="alert">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : null}
+            {notice ? (
+              <Alert role="status">
+                <AlertDescription>{notice}</AlertDescription>
+              </Alert>
+            ) : null}
+          </CardContent>
+          <CardFooter>
+            <p className="text-[11px] text-muted-foreground">
+              Access is limited to the server-authorized administrator phone.
+            </p>
+          </CardFooter>
+        </Card>
       </section>
     </main>
   )

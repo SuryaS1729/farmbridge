@@ -46,37 +46,6 @@
   --sidebar-ring: oklch(0.714 0.014 41.2);
 }
 
-* {
-  box-sizing: border-box;
-}
-
-html {
-  min-width: 320px;
-  min-height: 100%;
-}
-
-body {
-  min-width: 320px;
-  min-height: 100vh;
-  margin: 0;
-}
-
-button,
-input {
-  font: inherit;
-}
-
-button:focus-visible,
-a:focus-visible {
-  outline: 3px solid rgb(53 112 72 / 28%);
-  outline-offset: 3px;
-}
-
-::selection {
-  color: #173b28;
-  background: #cfdfcb;
-}
-
 .dark {
   --background: oklch(0.147 0.004 49.3);
   --foreground: oklch(0.986 0.002 67.8);
