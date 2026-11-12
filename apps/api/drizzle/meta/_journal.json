@@ -1,0 +1,69 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1792938297240,
+      "tag": "0000_wooden_yellowjacket",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794226715006,
+      "tag": "0001_jittery_manta",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794227113132,
+      "tag": "0002_confused_young_avengers",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794227527322,
+      "tag": "0003_unknown_veda",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794233583070,
+      "tag": "0004_daily-price-kg-precision",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794249853086,
+      "tag": "0005_deals-from-accepted-offers",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794254942731,
+      "tag": "0006_pickup-date-scheduling",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794255451656,
+      "tag": "0007_farmer-pickup-location",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794484028439,
+      "tag": "0008_pickup-collection",
+      "breakpoints": true
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__doop__search_icons",
+      "mcp__doop__append_frame_html"
+    ],
+    "deny": [],
+    "defaultMode": "default"
+  }
+}

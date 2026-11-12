@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(P=$(ls -d ../../node_modules/.pnpm/better-auth@1.7.12*/node_modules/better-auth | head -1); grep -n \"\\$Infer\\|UserWithPhoneNumber\" \"$P/dist/plugins/phone-number/index.d.mts\" | head -20)"
+    ],
+    "deny": [],
+    "defaultMode": "default"
+  }
+}

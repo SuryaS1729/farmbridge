@@ -1,0 +1,6 @@
+:root {
+  --font-display: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    monospace;
+}
