@@ -1,5 +1,17 @@
 import { useEffect, useState } from 'react'
 import './App.css'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 type AdminSession = {
   user: {
@@ -955,112 +967,139 @@ function App() {
             {dealError && !pickupEditingDealId && !collectionEditingDealId ? <p className="offers-error" role="alert">{dealError}</p> : null}
           </section>
         </section>
-        {pickupEditingDealId ? (() => {
-          const deal = deals.find((item) => item.id === pickupEditingDealId)
-          if (!deal) return null
-          return (
-            <div className="pickup-modal-backdrop">
-              <section className="pickup-modal" role="dialog" aria-modal="true" aria-labelledby="pickup-modal-title">
-                <button
-                  type="button"
-                  className="pickup-modal-close"
-                  aria-label="Close pickup date editor"
-                  onClick={() => setPickupEditingDealId(null)}
-                >×</button>
-                <p className="eyebrow">DRIVER PICKUP</p>
-                <h2 id="pickup-modal-title">{deal.pickupScheduledOn ? 'Reschedule pickup' : 'Schedule pickup'}</h2>
-                <p>Set the date for the driver to collect cocoa from {deal.farmerPhoneNumber ?? 'this farmer'}.</p>
-                <p className="pickup-modal-location"><strong>Pickup location:</strong> {deal.pickupLocation}</p>
-                <form className="pickup-date-form" onSubmit={(event) => {
-                  event.preventDefault()
-                  void schedulePickupDate(deal)
-                }}>
-                  <label htmlFor="pickup-scheduled-on">Pickup date <span>(DD-MM-YYYY)</span></label>
-                  <input
-                    id="pickup-scheduled-on"
-                    inputMode="numeric"
-                    maxLength={10}
-                    placeholder="DD-MM-YYYY"
-                    value={pickupInputs[deal.id] ?? (deal.pickupScheduledOn ? formatDateForIndia(deal.pickupScheduledOn) : '')}
-                    onChange={(event) => setPickupInputs((current) => ({ ...current, [deal.id]: event.target.value }))}
-                    autoFocus
-                  />
-                  {dealError ? <p className="offers-error" role="alert">{dealError}</p> : null}
-                  <button type="submit" className="offer-accept-button" disabled={pickupDealId !== null}>
-                    {pickupDealId === deal.id ? 'Saving…' : deal.pickupScheduledOn ? 'Save new pickup date' : 'Save pickup date'}
-                  </button>
-                  <button type="button" className="filter-clear-button" onClick={() => setPickupEditingDealId(null)}>
-                    Cancel
-                  </button>
-                </form>
-              </section>
-            </div>
-          )
-        })() : null}
-        {collectionEditingDealId ? (() => {
-          const deal = deals.find((item) => item.id === collectionEditingDealId)
-          if (!deal) return null
-          return (
-            <div className="pickup-modal-backdrop">
-              <section className="pickup-modal" role="dialog" aria-modal="true" aria-labelledby="collection-modal-title">
-                <button
-                  type="button"
-                  className="pickup-modal-close"
-                  aria-label="Close collection editor"
-                  onClick={() => setCollectionEditingDealId(null)}
-                >×</button>
-                <p className="eyebrow">DRIVER COLLECTION</p>
-                <h2 id="collection-modal-title">{deal.collectedOn ? 'Edit collection' : 'Record collection'}</h2>
-                <p>Record the date the driver collected cocoa from {deal.farmerPhoneNumber ?? 'this farmer'} and the weight on the scale.</p>
-                <p className="pickup-modal-location"><strong>Accepted quote quantity:</strong> {deal.quantityQuintals} quintals</p>
-                <form className="pickup-date-form" onSubmit={(event) => {
-                  event.preventDefault()
-                  void recordCollection(deal)
-                }}>
-                  <label htmlFor="collected-on">Collection date <span>(DD-MM-YYYY)</span></label>
-                  <input
-                    id="collected-on"
-                    inputMode="numeric"
-                    maxLength={10}
-                    placeholder="DD-MM-YYYY"
-                    value={collectionForm.collectedOn}
-                    onChange={(event) => setCollectionForm((current) => ({ ...current, collectedOn: event.target.value }))}
-                    autoFocus
-                  />
-                  <label htmlFor="collected-weight">
-                    Collected weight <span>({collectionForm.quantityUnit === 'quintal' ? 'quintals' : 'kg'})</span>
-                  </label>
-                  <div className="unit-toggle" role="group" aria-label="Weight unit">
-                    {(['quintal', 'kg'] as const).map((unit) => (
-                      <button
-                        key={unit}
-                        type="button"
-                        aria-pressed={collectionForm.quantityUnit === unit}
-                        onClick={() => setCollectionForm((current) => ({ ...current, quantityUnit: unit }))}
-                      >
-                        {unit === 'quintal' ? 'Quintals' : 'Kg'}
-                      </button>
-                    ))}
+        <Dialog
+          open={pickupEditingDealId !== null}
+          onOpenChange={(open) => {
+            if (!open) setPickupEditingDealId(null)
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            {(() => {
+              const deal = deals.find((item) => item.id === pickupEditingDealId)
+              if (!deal) return null
+              return (
+                <form
+                  className="grid gap-4"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    void schedulePickupDate(deal)
+                  }}
+                >
+                  <DialogHeader>
+                    <DialogTitle>{deal.pickupScheduledOn ? 'Reschedule pickup' : 'Schedule pickup'}</DialogTitle>
+                    <DialogDescription>
+                      Set the date for the driver to collect cocoa from {deal.farmerPhoneNumber ?? 'this farmer'}.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <p className="bg-muted px-3 py-2 text-xs whitespace-pre-wrap">
+                    <strong>Pickup location:</strong> {deal.pickupLocation}
+                  </p>
+                  <div className="grid gap-2">
+                    <Label htmlFor="pickup-scheduled-on">
+                      Pickup date <span className="text-muted-foreground">(DD-MM-YYYY)</span>
+                    </Label>
+                    <Input
+                      id="pickup-scheduled-on"
+                      inputMode="numeric"
+                      maxLength={10}
+                      placeholder="DD-MM-YYYY"
+                      value={pickupInputs[deal.id] ?? (deal.pickupScheduledOn ? formatDateForIndia(deal.pickupScheduledOn) : '')}
+                      onChange={(event) => setPickupInputs((current) => ({ ...current, [deal.id]: event.target.value }))}
+                    />
                   </div>
-                  <input
-                    id="collected-weight"
-                    inputMode="decimal"
-                    placeholder={collectionForm.quantityUnit === 'quintal' ? 'e.g. 12.5' : 'e.g. 1250'}
-                    value={collectionForm.quantity}
-                    onChange={(event) => setCollectionForm((current) => ({ ...current, quantity: event.target.value }))}
-                  />
-                  {dealError ? <p className="offers-error" role="alert">{dealError}</p> : null}
-                  <button type="submit" className="offer-accept-button" disabled={collectionSavingDealId !== null}>
-                    {collectionSavingDealId === deal.id ? 'Saving…' : deal.collectedOn ? 'Save changes' : 'Save collection'}
-                  </button>
-                  <button type="button" className="filter-clear-button" onClick={() => setCollectionEditingDealId(null)}>
-                    Cancel
-                  </button>
+                  {dealError ? <p className="text-xs text-destructive" role="alert">{dealError}</p> : null}
+                  <DialogFooter>
+                    <DialogClose render={<Button type="button" variant="outline" />}>Cancel</DialogClose>
+                    <Button type="submit" disabled={pickupDealId !== null}>
+                      {pickupDealId === deal.id ? 'Saving…' : deal.pickupScheduledOn ? 'Save new pickup date' : 'Save pickup date'}
+                    </Button>
+                  </DialogFooter>
                 </form>
-              </section>
-            </div>
-          )
-        })() : null}
+              )
+            })()}
+          </DialogContent>
+        </Dialog>
+        <Dialog
+          open={collectionEditingDealId !== null}
+          onOpenChange={(open) => {
+            if (!open) setCollectionEditingDealId(null)
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            {(() => {
+              const deal = deals.find((item) => item.id === collectionEditingDealId)
+              if (!deal) return null
+              return (
+                <form
+                  className="grid gap-4"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    void recordCollection(deal)
+                  }}
+                >
+                  <DialogHeader>
+                    <DialogTitle>{deal.collectedOn ? 'Edit collection' : 'Record collection'}</DialogTitle>
+                    <DialogDescription>
+                      Record the date the driver collected cocoa from {deal.farmerPhoneNumber ?? 'this farmer'} and the weight on the scale.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <p className="bg-muted px-3 py-2 text-xs">
+                    <strong>Accepted quote quantity:</strong> {deal.quantityQuintals} quintals
+                  </p>
+                  <div className="grid gap-2">
+                    <Label htmlFor="collected-on">
+                      Collection date <span className="text-muted-foreground">(DD-MM-YYYY)</span>
+                    </Label>
+                    <Input
+                      id="collected-on"
+                      inputMode="numeric"
+                      maxLength={10}
+                      placeholder="DD-MM-YYYY"
+                      value={collectionForm.collectedOn}
+                      onChange={(event) => setCollectionForm((current) => ({ ...current, collectedOn: event.target.value }))}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="collected-weight">
+                      Collected weight{' '}
+                      <span className="text-muted-foreground">
+                        ({collectionForm.quantityUnit === 'quintal' ? 'quintals' : 'kg'})
+                      </span>
+                    </Label>
+                    <div className="flex gap-1" role="group" aria-label="Weight unit">
+                      {(['quintal', 'kg'] as const).map((unit) => (
+                        <Button
+                          key={unit}
+                          type="button"
+                          size="sm"
+                          variant={collectionForm.quantityUnit === unit ? 'default' : 'outline'}
+                          aria-pressed={collectionForm.quantityUnit === unit}
+                          onClick={() => setCollectionForm((current) => ({ ...current, quantityUnit: unit }))}
+                        >
+                          {unit === 'quintal' ? 'Quintals' : 'Kg'}
+                        </Button>
+                      ))}
+                    </div>
+                    <Input
+                      id="collected-weight"
+                      inputMode="decimal"
+                      placeholder={collectionForm.quantityUnit === 'quintal' ? 'e.g. 12.5' : 'e.g. 1250'}
+                      value={collectionForm.quantity}
+                      onChange={(event) => setCollectionForm((current) => ({ ...current, quantity: event.target.value }))}
+                    />
+                  </div>
+                  {dealError ? <p className="text-xs text-destructive" role="alert">{dealError}</p> : null}
+                  <DialogFooter>
+                    <DialogClose render={<Button type="button" variant="outline" />}>Cancel</DialogClose>
+                    <Button type="submit" disabled={collectionSavingDealId !== null}>
+                      {collectionSavingDealId === deal.id ? 'Saving…' : deal.collectedOn ? 'Save changes' : 'Save collection'}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              )
+            })()}
+          </DialogContent>
+        </Dialog>
         <footer className="dashboard-footer">
           <span>FARMBRIDGE ADMIN</span>
           <span>Local development · Asia/Kolkata</span>

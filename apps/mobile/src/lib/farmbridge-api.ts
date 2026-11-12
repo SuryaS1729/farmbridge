@@ -66,6 +66,9 @@ export type FarmerOffer = {
   dealReadyOn: string | null;
   pickupLocation: string | null;
   pickupScheduledOn: string | null;
+  collectedOn: string | null;
+  collectedWeightKg: string | null;
+  collectedWeightQuintals: string | null;
 };
 
 const API_BASE_URL = (

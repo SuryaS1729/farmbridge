@@ -97,6 +97,8 @@ routes.get("/api/offers/mine", async (c) =>
           dealReadyOn: deals.readyOn,
           pickupLocation: deals.pickupLocation,
           pickupScheduledOn: deals.pickupScheduledOn,
+          collectedOn: deals.collectedOn,
+          collectedWeightKg: deals.collectedWeightKg,
         })
         .from(offers)
         .leftJoin(deals, eq(deals.offerId, offers.id))
@@ -110,6 +112,9 @@ routes.get("/api/offers/mine", async (c) =>
           quantityQuintals: kilogramsToQuintals(offer.quantityKg),
           dealQuantityQuintals: offer.dealQuantityKg
             ? kilogramsToQuintals(offer.dealQuantityKg)
+            : null,
+          collectedWeightQuintals: offer.collectedWeightKg
+            ? kilogramsToQuintals(offer.collectedWeightKg)
             : null,
         })),
       });
@@ -137,7 +142,13 @@ routes.post("/api/deals/:dealId/pickup-location", async (c) => {
   return withVerifiedActor(c, ["farmer"], async (db, actor) => {
     const result = await db.transaction(async (tx) => {
       const [deal] = await tx
-        .select({ id: deals.id, offerId: deals.offerId, status: deals.status, pickupLocation: deals.pickupLocation })
+        .select({
+          id: deals.id,
+          offerId: deals.offerId,
+          status: deals.status,
+          pickupLocation: deals.pickupLocation,
+          collectedOn: deals.collectedOn,
+        })
         .from(deals)
         .innerJoin(farmerProfile, eq(deals.farmerId, farmerProfile.id))
         .where(and(
@@ -147,6 +158,8 @@ routes.post("/api/deals/:dealId/pickup-location", async (c) => {
         .for("update");
       if (!deal) return { kind: "missing" as const };
       if (deal.status !== "open") return { kind: "closed" as const };
+      // The driver has already been there; changing directions now would only mislead the admin.
+      if (deal.collectedOn) return { kind: "collected" as const };
 
       await tx.update(deals).set({ pickupLocation: parsed.data.pickupLocation }).where(eq(deals.id, deal.id));
       await tx.insert(offerEvents).values({
@@ -162,6 +175,9 @@ routes.post("/api/deals/:dealId/pickup-location", async (c) => {
 
     if (result.kind === "missing") return c.json({ error: "Deal not found." }, 404);
     if (result.kind === "closed") return c.json({ error: "Pickup location can only be updated for an open deal." }, 409);
+    if (result.kind === "collected") {
+      return c.json({ error: "Your cocoa has already been collected, so the pickup location can no longer be changed." }, 409);
+    }
     return c.json({ pickupLocation: parsed.data.pickupLocation });
   });
 });

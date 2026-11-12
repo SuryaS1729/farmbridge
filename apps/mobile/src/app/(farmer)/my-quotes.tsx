@@ -250,8 +250,27 @@ export default function MyQuotesScreen() {
                             ? formatDateForIndia(quote.pickupScheduledOn)
                             : "Not scheduled yet"}
                         />
+                        <Detail
+                          label="Collected"
+                          value={quote.collectedOn && quote.collectedWeightQuintals
+                            ? `${quote.collectedWeightQuintals} quintals on ${formatDateForIndia(quote.collectedOn)}`
+                            : "Not collected yet"}
+                        />
                       </View>
-                      {quote.dealId ? (
+                      {quote.collectedOn ? (
+                        <View style={[styles.pickupLocationBox, { borderTopColor: theme.border }]}>
+                          <ThemedText type="label" themeColor="textSecondary">COCOA COLLECTED</ThemedText>
+                          <ThemedText type="small" themeColor="textSecondary">
+                            The driver collected your cocoa. The weight above is from the scale and may differ from the quantity in your quote.
+                          </ThemedText>
+                          {quote.pickupLocation ? (
+                            <View style={styles.collectedLocation}>
+                              <ThemedText type="label" themeColor="textSecondary">PICKUP LOCATION</ThemedText>
+                              <ThemedText type="small">{quote.pickupLocation}</ThemedText>
+                            </View>
+                          ) : null}
+                        </View>
+                      ) : quote.dealId ? (
                         <View style={[styles.pickupLocationBox, { borderTopColor: theme.border }]}>
                           <ThemedText type="label" themeColor="textSecondary">PICKUP LOCATION FOR THE DRIVER</ThemedText>
                           <ThemedText type="small" themeColor="textSecondary">
@@ -379,6 +398,7 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   pickupError: { color: "#9A4237" },
+  collectedLocation: { gap: Space.one },
   state: { flex: 1, minHeight: 180, alignItems: "center", justifyContent: "center", gap: Space.three },
   stateCard: { gap: Space.three },
 });
