@@ -1,4 +1,4 @@
-import { RiArrowDownSLine } from '@remixicon/react'
+import { RiArrowDownSLine, RiLogoutBoxRLine } from '@remixicon/react'
 import { useEffect, useState } from 'react'
 import './App.css'
 import {
@@ -578,33 +578,35 @@ function App() {
 
   if (session) {
     return (
-      <main className="dashboard-shell">
-        <header className="topbar">
-          <a className="brand" href="/" aria-label="Farmbridge home">
-            <span className="brand-mark" aria-hidden="true">F</span>
+      <main className="flex min-h-screen flex-col bg-muted/40">
+        <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b bg-background px-4 sm:px-8">
+          <a className="flex items-center gap-2 font-heading text-sm" href="/" aria-label="Farmbridge home">
+            <span className="flex size-7 items-center justify-center bg-primary text-xs text-primary-foreground" aria-hidden="true">
+              F
+            </span>
             <span>farmbridge</span>
           </a>
-          <div className="topbar-actions">
-            <span className="admin-chip"><span /> Administrator</span>
-            <button className="text-button" onClick={signOut} disabled={busy}>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="hidden sm:inline-flex">Administrator</Badge>
+            <Button variant="ghost" size="sm" onClick={signOut} disabled={busy}>
+              <RiLogoutBoxRLine data-icon="inline-start" aria-hidden />
               Sign out
-            </button>
+            </Button>
           </div>
         </header>
 
-        <section className="dashboard-content">
-          <div className="page-heading">
-            <div>
-              <p className="eyebrow">PROCUREMENT · COCOA</p>
-              <h1>Good morning.</h1>
-              <p className="page-subtitle">
+        <section className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-8">
+          <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+            <div className="grid gap-1">
+              <p className="text-[10px] font-medium tracking-widest text-muted-foreground">PROCUREMENT · COCOA</p>
+              <h1 className="font-heading text-2xl">Good morning.</h1>
+              <p className="text-xs text-muted-foreground">
                 Set the price farmers will see before they submit today’s quotes.
               </p>
             </div>
-            <div className="date-pill">
-              <span className="date-dot" />
+            <Badge variant="outline" className="tabular-nums">
               {today ? formatDateForIndia(today.businessDate) : 'Today · Asia/Kolkata'}
-            </div>
+            </Badge>
           </div>
 
           <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.65fr)_minmax(260px,0.85fr)]">
@@ -1203,7 +1205,7 @@ function App() {
             })()}
           </DialogContent>
         </Dialog>
-        <footer className="dashboard-footer">
+        <footer className="flex justify-between border-t bg-background px-4 py-3 text-[10px] tracking-widest text-muted-foreground sm:px-8">
           <span>FARMBRIDGE ADMIN</span>
           <span>Local development · Asia/Kolkata</span>
         </footer>

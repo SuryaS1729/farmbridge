@@ -31,23 +31,6 @@
   font-size: 22px;
 }
 
-.dashboard-shell {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: #f6f7f3;
-}
-
-.topbar {
-  height: 76px;
-  padding: 0 clamp(24px, 6vw, 88px);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-bottom: 1px solid #e7eae3;
-  background: #fff;
-}
-
 .brand {
   display: inline-flex;
   align-items: center;
@@ -66,30 +49,6 @@
   font-size: 19px;
 }
 
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 26px;
-}
-
-.admin-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: #44554a;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.admin-chip > span,
-.date-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #4d986a;
-}
-
-.text-button,
 .back-button {
   border: 0;
   padding: 6px 0;
@@ -101,29 +60,8 @@
   cursor: pointer;
 }
 
-.text-button:hover,
 .back-button:hover {
   color: #245a40;
-}
-
-.text-button:disabled {
-  opacity: 0.5;
-  cursor: wait;
-}
-
-.dashboard-content {
-  width: min(1120px, calc(100% - 48px));
-  margin: 0 auto;
-  padding: 58px 0 72px;
-  flex: 1;
-}
-
-.page-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 24px;
-  margin-bottom: 32px;
 }
 
 .eyebrow {
@@ -133,38 +71,6 @@
   font-weight: 750;
   letter-spacing: 1.5px;
   line-height: 1.4;
-}
-
-.page-heading h1 {
-  margin: 0;
-  color: #193b2a;
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: clamp(34px, 4vw, 45px);
-  font-weight: 500;
-  letter-spacing: -1.3px;
-  line-height: 1.12;
-}
-
-.page-subtitle {
-  margin: 12px 0 0;
-  color: #718075;
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.date-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  margin-bottom: 5px;
-  padding: 10px 13px;
-  border: 1px solid #e3e8df;
-  border-radius: 100px;
-  color: #607166;
-  background: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
 }
 
 .login-form label {
@@ -214,7 +120,6 @@
 }
 
 .primary-button:focus-visible,
-.text-button:focus-visible,
 .back-button:focus-visible {
   outline: 3px solid rgb(53 112 72 / 28%);
   outline-offset: 3px;
@@ -246,24 +151,6 @@
 .message-success {
   color: #2d6846;
   background: #eef7ef;
-}
-
-.dashboard-footer {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 17px clamp(24px, 6vw, 88px);
-  border-top: 1px solid #e7eae3;
-  color: #8a948c;
-  background: #fff;
-  font-size: 9px;
-  font-weight: 650;
-  letter-spacing: 1px;
-}
-
-.dashboard-footer span:last-child {
-  font-weight: 450;
-  letter-spacing: 0;
 }
 
 .login-shell {
@@ -448,17 +335,9 @@
     display: inline-flex;
   }
 
-  .dashboard-content {
-    padding-top: 39px;
-  }
 }
 
 @media (max-width: 560px) {
-  .topbar {
-    height: 65px;
-    padding: 0 19px;
-  }
-
   .brand {
     font-size: 17px;
   }
@@ -468,39 +347,4 @@
     height: 31px;
   }
 
-  .topbar-actions {
-    gap: 12px;
-  }
-
-  .admin-chip {
-    gap: 6px;
-    font-size: 11px;
-  }
-
-  .text-button {
-    font-size: 12px;
-  }
-
-  .dashboard-content {
-    width: calc(100% - 36px);
-    padding: 34px 0 43px;
-  }
-
-  .page-heading {
-    display: block;
-    margin-bottom: 23px;
-  }
-
-  .page-heading h1 {
-    font-size: 37px;
-  }
-
-  .date-pill {
-    margin-top: 17px;
-  }
-
-  .dashboard-footer {
-    padding: 15px 18px;
-    font-size: 8px;
-  }
 }
