@@ -11,6 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -591,6 +592,7 @@ function App() {
           </a>
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="hidden sm:inline-flex">Administrator</Badge>
+            <ThemeToggle />
             <Button variant="ghost" size="sm" onClick={signOut} disabled={busy}>
               <RiLogoutBoxRLine data-icon="inline-start" aria-hidden />
               Sign out
@@ -1246,7 +1248,10 @@ function App() {
         </div>
       </aside>
 
-      <section className="flex items-center justify-center p-4 sm:p-8">
+      <section className="relative flex items-center justify-center p-4 sm:p-8">
+        <div className="absolute top-4 right-4">
+          <ThemeToggle />
+        </div>
         <Card className="w-full max-w-sm">
           <CardHeader>
             <div className="mb-4 flex items-center gap-2 font-heading text-sm lg:hidden">

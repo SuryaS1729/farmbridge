@@ -5,6 +5,18 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Farmbridge Admin</title>
+    <script>
+      // Apply the saved colour theme before the page paints, to avoid a white flash.
+      // Keep the storage key in sync with src/lib/theme.ts.
+      (function () {
+        var saved = null
+        try { saved = localStorage.getItem('farmbridge-theme') } catch (e) {}
+        var dark = saved === 'dark' ||
+          (saved !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        if (dark) document.documentElement.classList.add('dark')
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>
