@@ -23,6 +23,7 @@ import {
   type DailyCocoaPrice,
   type QuoteInput,
 } from "@/lib/farmbridge-api";
+import { posthog, posthogLogger } from "@/lib/posthog";
 
 type QuoteFields = {
   offeredPricePerKg: string;
@@ -171,6 +172,13 @@ export default function QuoteScreen() {
       return;
     }
 
+    posthog?.capture("quote_review_started", {
+      offered_price_per_kg: Number(fields.offeredPricePerKg),
+      quantity: Number(fields.quantity),
+      quantity_unit: quantityUnit,
+      moisture_percent: moisture,
+      bean_count_per_100g: beanCount,
+    });
     setReviewing(true);
   }
 
@@ -194,8 +202,23 @@ export default function QuoteScreen() {
 
     try {
       await submitQuote(input);
+      posthog?.capture("quote_submitted", {
+        offered_price_per_kg: Number(fields.offeredPricePerKg),
+        quantity: Number(fields.quantity),
+        quantity_unit: quantityUnit,
+        moisture_percent: input.moisturePercent,
+        bean_count_per_100g: input.beanCountPer100g,
+      });
+      posthogLogger.info("quote submission completed", {
+        operation: "quote_submission",
+        quantity_unit: quantityUnit,
+      });
       setSubmitted(true);
     } catch (submissionError) {
+      posthogLogger.error("quote submission failed", {
+        operation: "quote_submission",
+        error_type: "request_failed",
+      });
       setError(
         submissionError instanceof Error
           ? submissionError.message

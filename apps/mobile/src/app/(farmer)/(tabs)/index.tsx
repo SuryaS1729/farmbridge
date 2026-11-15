@@ -17,6 +17,7 @@ import { ThemedView } from "@/components/themed-view";
 import { Space } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { authClient } from "@/lib/auth-client";
+import { posthog } from "@/lib/posthog";
 import {
   formatDateForIndia,
   formatPricePerKg,
@@ -76,7 +77,10 @@ export default function FarmerHomeScreen() {
         setError(
           signOutError.message ?? "Could not sign out. Please try again.",
         );
+        return;
       }
+
+      posthog?.reset();
     } catch {
       setError("Could not sign out. Please try again.");
     } finally {
