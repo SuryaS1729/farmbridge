@@ -10,6 +10,7 @@ import { ThemedView } from "@/components/themed-view";
 import { Radius, Space } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { formatDateForIndia, getMyQuotes, savePickupLocation as saveDealPickupLocation, type FarmerOffer } from "@/lib/farmbridge-api";
+import { posthog, posthogLogger } from "@/lib/posthog";
 
 function formatSubmittedDate(value: string) {
   const date = new Date(value);
@@ -106,6 +107,14 @@ export default function MyQuotesScreen() {
         quote.dealId === dealId ? { ...quote, pickupLocation: result.pickupLocation } : quote,
       ));
       setPickupLocations((current) => ({ ...current, [dealId]: result.pickupLocation }));
+      const isUpdate = Boolean(quotes.find((quote) => quote.dealId === dealId)?.pickupLocation);
+      posthog?.capture("pickup_location_saved", {
+        is_update: isUpdate,
+      });
+      posthogLogger.info("pickup location saved", {
+        operation: "pickup_location_save",
+        is_update: isUpdate,
+      });
       setPickupLocationNotice(dealId);
     } catch (saveError) {
       setPickupLocationError(

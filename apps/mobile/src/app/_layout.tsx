@@ -1,13 +1,38 @@
 import { authClient } from '@/lib/auth-client';
+import { useEffect } from 'react';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { PostHogProvider } from 'posthog-react-native';
+import { posthog } from '@/lib/posthog';
 SplashScreen.preventAutoHideAsync();
+
+function ScreenTracker() {
+  const pathname = usePathname();
+
+  useEffect(() => {
+    posthog?.screen(pathname);
+  }, [pathname]);
+
+  return null;
+}
 
 export default function RootLayout() {
   const { data: session, isPending } = authClient.useSession();
+
+  useEffect(() => {
+    if (!session?.user.id) {
+      return;
+    }
+
+    posthog?.identify(session.user.id, {
+      $set: session.user.phoneNumber
+        ? { phone_number: session.user.phoneNumber }
+        : {},
+    });
+  }, [session?.user.id, session?.user.phoneNumber]);
 
   if (isPending) {
     return (
@@ -18,19 +43,23 @@ export default function RootLayout() {
   }
 
 
-  return (
+  const content = (
     <>
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Protected guard={!session}>
-        <Stack.Screen name="(auth)" />
-      </Stack.Protected>
+      <ScreenTracker />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Protected guard={!session}>
+          <Stack.Screen name="(auth)" />
+        </Stack.Protected>
 
-      <Stack.Protected guard={Boolean(session)}>
-        <Stack.Screen name="(farmer)" />
-      </Stack.Protected>
+        <Stack.Protected guard={Boolean(session)}>
+          <Stack.Screen name="(farmer)" />
+        </Stack.Protected>
       </Stack>
-      <AnimatedSplashOverlay /></>
+      <AnimatedSplashOverlay />
+    </>
   )
+
+  return posthog ? <PostHogProvider client={posthog}>{content}</PostHogProvider> : content
 }
 const styles = StyleSheet.create({
   loading: {
