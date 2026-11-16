@@ -10,11 +10,26 @@ function isCalendarDate(value: string) {
   return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value;
 }
 
-export const publishDailyPriceSchema = z
-  .object({
-    basePricePerQuintal: z.string().regex(moneyPattern, "Enter a price with up to two decimal places."),
-  })
-  .strict();
+// Prices are stored per kg at four decimal places, so a kg price with four
+// decimals and a quintal price with two decimals map to each other exactly.
+const kilogramPricePattern = /^\d{1,8}(?:\.\d{1,4})?$/;
+
+export const publishDailyPriceSchema = z.discriminatedUnion("priceUnit", [
+  z
+    .object({
+      priceUnit: z.literal("quintal"),
+      basePrice: z.string().regex(moneyPattern, "Enter a quintal price with up to two decimal places."),
+    })
+    .strict(),
+  z
+    .object({
+      priceUnit: z.literal("kg"),
+      basePrice: z
+        .string()
+        .regex(kilogramPricePattern, "Enter a kg price with up to four decimal places."),
+    })
+    .strict(),
+]);
 
 const sharedOfferFields = {
   offeredPricePerKg: z.string().regex(moneyPattern, "Enter a price with up to two decimal places."),
@@ -92,6 +107,13 @@ export function quintalPriceToKilogramPrice(value: string): string {
   const kilogramTenThousandths = quintalCents;
   const whole = kilogramTenThousandths / 10_000n;
   const fraction = (kilogramTenThousandths % 10_000n).toString().padStart(4, "0");
+  return `${whole}.${fraction}`;
+}
+
+export function normalizeKilogramPrice(value: string): string {
+  const tenThousandths = decimalToTenThousandths(value);
+  const whole = tenThousandths / 10_000n;
+  const fraction = (tenThousandths % 10_000n).toString().padStart(4, "0");
   return `${whole}.${fraction}`;
 }
 

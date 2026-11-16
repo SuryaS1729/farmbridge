@@ -16,7 +16,7 @@ This note records the current implementation state and agreed product decisions.
 
 ## Procurement decisions now reflected in code
 
-- The farmer home screen shows the published daily Cocoa base price with a kg/quintal display switch, defaulting to kg. The screen refreshes when it regains focus and when the app returns to the foreground. The admin enters the base price per quintal; the API converts and stores the per-kg amount to four decimal places, preserving paise in the quintal input. The API provides `GET /api/prices/today` and an admin-only `POST /api/admin/prices/today`.
+- The farmer home screen shows the published daily Cocoa base price with a kg/quintal display switch, defaulting to kg. The screen refreshes when it regains focus and when the app returns to the foreground. The admin enters the base price per quintal (up to two decimals) or per kg (up to four decimals) using a unit switch; `POST /api/admin/prices/today` takes `{ priceUnit, basePrice }` and stores the per-kg amount to four decimal places, so both units are exact. The API provides `GET /api/prices/today` and an admin-only `POST /api/admin/prices/today`.
 - `apps/web` now has a phone/OTP sign-in page and a responsive daily-price publishing dashboard. Local Vite requests use credentialed CORS to reach the API.
 - The admin phone is checked server-side using `ADMIN_PHONE_NUMBER`. After OTP verification, `POST /api/admin/claim` authorizes only that verified number and assigns the server-side admin role. The phone shown in the browser is not an authorization control.
 - A farmer explicitly intends to sell by submitting a quote. There is no separate Yes/No selling field and no prior admin approval requirement for submission.

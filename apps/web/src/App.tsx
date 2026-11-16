@@ -205,6 +205,26 @@ function getErrorMessage(error: unknown) {
     : 'Something went wrong. Please try again.'
 }
 
+type PriceUnit = 'quintal' | 'kg'
+
+const pricePatterns: Record<PriceUnit, RegExp> = {
+  quintal: /^\d{1,10}(?:\.\d{1,2})?$/,
+  kg: /^\d{1,8}(?:\.\d{1,4})?$/,
+}
+
+// Convert with integer math so prices never pick up floating-point error.
+// A 2-decimal quintal price is always an exact 4-decimal kg price (1 quintal = 100 kg).
+function convertPriceInput(value: string, from: PriceUnit, to: PriceUnit) {
+  if (from === to || !pricePatterns[from].test(value)) return value
+  const [whole, fraction = ''] = value.split('.')
+  if (to === 'kg') {
+    const paisePerQuintal = BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'))
+    return formatPrice(`${paisePerQuintal / 10_000n}.${(paisePerQuintal % 10_000n).toString().padStart(4, '0')}`)
+  }
+  const tenThousandthsPerKg = BigInt(whole) * 10_000n + BigInt(fraction.padEnd(4, '0'))
+  return formatPrice(`${tenThousandthsPerKg / 100n}.${(tenThousandthsPerKg % 100n).toString().padStart(2, '0')}`)
+}
+
 function formatPrice(value: string) {
   const [whole, fraction = ''] = value.split('.')
   const trimmedFraction = fraction.replace(/0+$/, '')
@@ -256,6 +276,7 @@ function App() {
   const [session, setSession] = useState<AdminSession>(null)
   const [today, setToday] = useState<TodayPrice | null>(null)
   const [priceInput, setPriceInput] = useState('')
+  const [priceUnit, setPriceUnit] = useState<PriceUnit>('quintal')
   const [offerFilter, setOfferFilter] = useState<OfferFilter>('open')
   const [offerFilters, setOfferFilters] = useState<OfferFilters>(emptyOfferFilters)
   const [offers, setOffers] = useState<AdminOffer[]>([])
@@ -278,7 +299,9 @@ function App() {
   async function loadDashboard() {
     const data = await apiRequest<TodayPrice>('/api/prices/today')
     setToday(data)
-    setPriceInput(data.price?.basePricePerQuintal ?? '')
+    setPriceInput(
+      data.price ? formatPrice(priceUnit === 'kg' ? data.price.basePricePerKg : data.price.basePricePerQuintal) : '',
+    )
   }
 
   async function loadOffers(
@@ -507,8 +530,12 @@ function App() {
     setError(null)
     setNotice(null)
 
-    if (!/^\d{1,10}(?:\.\d{1,2})?$/.test(priceInput)) {
-      setError('Enter a price with up to two decimal places.')
+    if (!pricePatterns[priceUnit].test(priceInput)) {
+      setError(
+        priceUnit === 'kg'
+          ? 'Enter a kg price with up to four decimal places.'
+          : 'Enter a quintal price with up to two decimal places.',
+      )
       return
     }
 
@@ -516,7 +543,7 @@ function App() {
     try {
       await apiRequest('/api/admin/prices/today', {
         method: 'POST',
-        body: { basePricePerQuintal: priceInput },
+        body: { priceUnit, basePrice: priceInput },
       })
       await Promise.all([loadDashboard(), loadOffers(), loadDeals()])
       setNotice('Today’s Cocoa price is published.')
@@ -625,8 +652,10 @@ function App() {
                   {today?.price ? (
                     <p className="flex items-baseline gap-1 font-heading tabular-nums">
                       <span className="text-xl text-muted-foreground">₹</span>
-                      <span className="text-4xl">{today.price.basePricePerQuintal}</span>
-                      <span className="text-sm text-muted-foreground">/ quintal</span>
+                      <span className="text-4xl">
+                        {priceUnit === 'kg' ? formatPrice(today.price.basePricePerKg) : today.price.basePricePerQuintal}
+                      </span>
+                      <span className="text-sm text-muted-foreground">/ {priceUnit === 'kg' ? 'kg' : 'quintal'}</span>
                     </p>
                   ) : (
                     <p className="font-heading text-2xl text-muted-foreground">Not published yet</p>
@@ -634,14 +663,32 @@ function App() {
                 </div>
 
                 <p className="text-xs/relaxed text-muted-foreground">
-                  Enter the daily base price per quintal. The API converts it to
-                  the equivalent price per kg for the farmer app and quote checks.
+                  Enter the daily base price per quintal or per kg (1 quintal = 100 kg).
+                  The API stores the per-kg price used by the farmer app and quote checks.
                 </p>
 
                 <form className="grid gap-2" onSubmit={publishPrice}>
                   <Label htmlFor="price">
-                    Daily base price <span className="text-muted-foreground">(INR per quintal)</span>
+                    Daily base price{' '}
+                    <span className="text-muted-foreground">(INR per {priceUnit === 'kg' ? 'kg' : 'quintal'})</span>
                   </Label>
+                  <div className="flex gap-1" role="group" aria-label="Price unit">
+                    {(['quintal', 'kg'] as const).map((unit) => (
+                      <Button
+                        key={unit}
+                        type="button"
+                        size="sm"
+                        variant={priceUnit === unit ? 'default' : 'outline'}
+                        aria-pressed={priceUnit === unit}
+                        onClick={() => {
+                          setPriceInput((current) => convertPriceInput(current, priceUnit, unit))
+                          setPriceUnit(unit)
+                        }}
+                      >
+                        {unit === 'quintal' ? 'Per quintal' : 'Per kg'}
+                      </Button>
+                    ))}
+                  </div>
                   <InputGroup>
                     <InputGroupAddon>
                       <InputGroupText>₹</InputGroupText>
@@ -651,17 +698,17 @@ function App() {
                       type="text"
                       inputMode="decimal"
                       autoComplete="off"
-                      placeholder="e.g. 25000.00"
+                      placeholder={priceUnit === 'kg' ? 'e.g. 250.00' : 'e.g. 25000.00'}
                       value={priceInput}
                       onChange={(event) => setPriceInput(event.target.value)}
                       aria-describedby="price-help"
                     />
                     <InputGroupAddon align="inline-end">
-                      <InputGroupText>per quintal</InputGroupText>
+                      <InputGroupText>per {priceUnit === 'kg' ? 'kg' : 'quintal'}</InputGroupText>
                     </InputGroupAddon>
                   </InputGroup>
                   <p id="price-help" className="text-[11px] text-muted-foreground">
-                    Up to two decimal places. Publishing again updates today’s
+                    {priceUnit === 'kg' ? 'Up to four decimal places.' : 'Up to two decimal places.'} Publishing again updates today’s
                     price and records a revision.
                   </p>
                   <Button type="submit" className="mt-2 w-fit" disabled={busy}>

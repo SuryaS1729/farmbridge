@@ -6,6 +6,7 @@ import { withVerifiedActor } from "../lib/with-verified-actor";
 import {
   decimalToTenThousandths,
   kilogramPriceToQuintalPrice,
+  normalizeKilogramPrice,
   publishDailyPriceSchema,
   quintalPriceToKilogramPrice,
 } from "../validation/quotes";
@@ -64,9 +65,10 @@ routes.post("/api/admin/prices/today", async (c) => {
 
   return withVerifiedActor(c, ["admin"], async (db, actor) => {
     const businessDate = getBusinessDate();
-    const basePricePerKg = quintalPriceToKilogramPrice(
-      parsed.data.basePricePerQuintal,
-    );
+    const basePricePerKg =
+      parsed.data.priceUnit === "kg"
+        ? normalizeKilogramPrice(parsed.data.basePrice)
+        : quintalPriceToKilogramPrice(parsed.data.basePrice);
     const result = await db.transaction(async (tx) => {
       const [cocoa] = await tx
         .select({ id: commodities.id })

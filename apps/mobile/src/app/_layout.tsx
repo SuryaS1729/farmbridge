@@ -27,12 +27,8 @@ export default function RootLayout() {
       return;
     }
 
-    posthog?.identify(session.user.id, {
-      $set: session.user.phoneNumber
-        ? { phone_number: session.user.phoneNumber }
-        : {},
-    });
-  }, [session?.user.id, session?.user.phoneNumber]);
+    posthog?.identify(session.user.id);
+  }, [session?.user.id]);
 
   if (isPending) {
     return (
