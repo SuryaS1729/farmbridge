@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import { createDb } from "./db/client";
 import { createAuth } from "./auth";
 import adminRoutes from "./routes/admin";
+import farmerRoutes from "./routes/farmer";
 import offerRoutes from "./routes/offers";
 import priceRoutes from "./routes/prices";
 
@@ -22,6 +23,7 @@ app.use(
 app.route("/", priceRoutes);
 app.route("/", offerRoutes);
 app.route("/", adminRoutes);
+app.route("/", farmerRoutes);
 
 app.get("/", (c) => c.text("Hello Sahithi!"));
 

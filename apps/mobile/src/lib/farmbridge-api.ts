@@ -117,3 +117,38 @@ export function savePickupLocation(dealId: string, pickupLocation: string) {
     body: { pickupLocation },
   });
 }
+
+export type FarmerProfileInput = {
+  aadhaarName: string;
+  village: string;
+  mandal: string;
+  farmSizeAcres: string;
+  cocoaTreeCount: number;
+};
+
+export type FarmerProfile = {
+  aadhaarName: string | null;
+  village: string | null;
+  mandal: string | null;
+  farmSizeAcres: string | null;
+  cocoaTreeCount: number | null;
+  onboardedAt: string | null;
+};
+
+export type FarmerProfileResponse = {
+  profile: FarmerProfile | null;
+  onboarded: boolean;
+};
+
+export function getFarmerProfile() {
+  return request<FarmerProfileResponse>("/api/farmer/profile", {
+    method: "GET",
+  });
+}
+
+export function saveFarmerProfile(input: FarmerProfileInput) {
+  return request<FarmerProfileResponse>("/api/farmer/profile", {
+    method: "POST",
+    body: input,
+  });
+}

@@ -19,3 +19,11 @@ onlyBuiltDependencies:
 allowBuilds:
   esbuild: true
   workerd: true
+# react-native-worklets' Babel plugin requires these without declaring them,
+# so pnpm resolved the hoisted Babel 8 copies (from eslint-config) and Metro
+# bundling crashed. Pin them to Babel 7 to match @babel/core.
+packageExtensions:
+  react-native-worklets:
+    dependencies:
+      "@babel/generator": ^7.28.0
+      "@babel/traverse": ^7.28.0

@@ -64,6 +64,13 @@
       "when": 1794484028439,
       "tag": "0008_pickup-collection",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794861953349,
+      "tag": "0009_farmer-onboarding-details",
+      "breakpoints": true
     }
   ]
 }

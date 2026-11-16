@@ -5,6 +5,7 @@ import {
   check,
   date,
   index,
+  integer,
   jsonb,
   numeric,
   pgEnum,
@@ -55,6 +56,14 @@ export const farmerProfile = pgTable("farmer_profiles", {
     .notNull()
     .unique()
     .references(() => user.id, { onDelete: "cascade" }),
+  // Onboarding details. Nullable because profiles created before onboarding
+  // existed have none; the app asks for them until all five are filled in.
+  aadhaarName: text("aadhaar_name"),
+  village: text("village"),
+  mandal: text("mandal"),
+  farmSizeAcres: numeric("farm_size_acres", { precision: 8, scale: 2 }),
+  cocoaTreeCount: integer("cocoa_tree_count"),
+  onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
@@ -62,7 +71,16 @@ export const farmerProfile = pgTable("farmer_profiles", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
-});
+}, (table) => [
+  check(
+    "farmer_profiles_farm_size_positive_check",
+    sql`${table.farmSizeAcres} is null or ${table.farmSizeAcres} > 0`,
+  ),
+  check(
+    "farmer_profiles_tree_count_positive_check",
+    sql`${table.cocoaTreeCount} is null or ${table.cocoaTreeCount} > 0`,
+  ),
+]);
 
 export const commodities = pgTable(
   "commodities",
