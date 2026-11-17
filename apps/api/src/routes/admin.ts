@@ -1,10 +1,11 @@
-import { and, desc, eq, gte, gt, inArray, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, gt, inArray, lte, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 
 import {
   dailyPrices,
   deals,
+  farmerAddresses,
   farmerProfile,
   offerEvents,
   offers,
@@ -304,6 +305,150 @@ routes.post("/api/admin/offers/:offerId/reject", async (c) => {
     return c.json({ status: "rejected" });
   });
 });
+
+// Every farmer account, including ones that have not finished onboarding,
+// so the buying team can see who has signed up.
+routes.get("/api/admin/farmers", (c) =>
+  withVerifiedActor(c, ["admin"], async (db) => {
+    const rows = await db
+      .select({
+        userId: user.id,
+        phoneNumber: user.phoneNumber,
+        signedUpAt: user.createdAt,
+        aadhaarName: farmerProfile.aadhaarName,
+        village: farmerProfile.village,
+        mandal: farmerProfile.mandal,
+        farmSizeAcres: farmerProfile.farmSizeAcres,
+        cocoaTreeCount: farmerProfile.cocoaTreeCount,
+        onboardedAt: farmerProfile.onboardedAt,
+        defaultAddressLabel: farmerAddresses.label,
+        defaultAddress: farmerAddresses.address,
+        addressCount: sql<number>`(
+          select count(*) from ${farmerAddresses} fa
+          where fa.farmer_id = ${farmerProfile.id}
+        )::int`,
+        quoteCount: sql<number>`(
+          select count(*) from ${offers} o
+          where o.farmer_id = ${farmerProfile.id}
+        )::int`,
+        dealCount: sql<number>`(
+          select count(*) from ${deals} d
+          where d.farmer_id = ${farmerProfile.id}
+        )::int`,
+        lastQuoteAt: sql<string | null>`(
+          select max(o.submitted_at) from ${offers} o
+          where o.farmer_id = ${farmerProfile.id}
+        )`,
+      })
+      .from(user)
+      .leftJoin(farmerProfile, eq(farmerProfile.authUserId, user.id))
+      .leftJoin(
+        farmerAddresses,
+        and(eq(farmerAddresses.farmerId, farmerProfile.id), eq(farmerAddresses.isDefault, true)),
+      )
+      .where(eq(user.role, "farmer"))
+      .orderBy(desc(user.createdAt))
+      .limit(500);
+
+    return c.json({ limit: 500, farmers: rows });
+  }),
+);
+
+// One farmer's profile, saved addresses and full quote/deal history.
+// Keyed by user id so farmers who never finished onboarding can be opened too.
+routes.get("/api/admin/farmers/:userId", (c) =>
+  withVerifiedActor(c, ["admin"], async (db) => {
+    const userId = z.string().min(1).max(100).safeParse(c.req.param("userId"));
+    if (!userId.success) return c.json({ error: "Invalid farmer ID." }, 400);
+
+    const [farmer] = await db
+      .select({
+        userId: user.id,
+        phoneNumber: user.phoneNumber,
+        signedUpAt: user.createdAt,
+        profileId: farmerProfile.id,
+        aadhaarName: farmerProfile.aadhaarName,
+        village: farmerProfile.village,
+        mandal: farmerProfile.mandal,
+        farmSizeAcres: farmerProfile.farmSizeAcres,
+        cocoaTreeCount: farmerProfile.cocoaTreeCount,
+        onboardedAt: farmerProfile.onboardedAt,
+      })
+      .from(user)
+      .leftJoin(farmerProfile, eq(farmerProfile.authUserId, user.id))
+      .where(and(eq(user.id, userId.data), eq(user.role, "farmer")))
+      .limit(1);
+
+    if (!farmer) return c.json({ error: "Farmer not found." }, 404);
+
+    const { profileId, ...profile } = farmer;
+    if (!profileId) {
+      return c.json({ farmer: profile, addresses: [], quotes: [] });
+    }
+
+    const [addresses, rows] = await Promise.all([
+      db
+        .select({
+          id: farmerAddresses.id,
+          label: farmerAddresses.label,
+          address: farmerAddresses.address,
+          isDefault: farmerAddresses.isDefault,
+          createdAt: farmerAddresses.createdAt,
+        })
+        .from(farmerAddresses)
+        .where(eq(farmerAddresses.farmerId, profileId))
+        .orderBy(desc(farmerAddresses.isDefault), asc(farmerAddresses.createdAt)),
+      db
+        .select({
+          id: offers.id,
+          offeredPricePerKg: offers.offeredPricePerKg,
+          basePricePerKg: dailyPrices.basePricePerKg,
+          quantityKg: offers.quantityKg,
+          moisturePercent: offers.moisturePercent,
+          beanCountPer100g: offers.beanCountPer100g,
+          readyOn: offers.readyOn,
+          pickupLocation: offers.pickupLocation,
+          status: offers.status,
+          rejectionReason: offers.rejectionReason,
+          submittedAt: offers.submittedAt,
+          expiresAt: offers.expiresAt,
+          dealId: deals.id,
+          dealStatus: deals.status,
+          acceptedAt: deals.acceptedAt,
+          dealPickupLocation: deals.pickupLocation,
+          pickupScheduledOn: deals.pickupScheduledOn,
+          collectedOn: deals.collectedOn,
+          collectedWeightKg: deals.collectedWeightKg,
+        })
+        .from(offers)
+        .innerJoin(dailyPrices, eq(offers.dailyPriceId, dailyPrices.id))
+        .leftJoin(deals, eq(deals.offerId, offers.id))
+        .where(eq(offers.farmerId, profileId))
+        .orderBy(desc(offers.submittedAt))
+        .limit(200),
+    ]);
+
+    // Open quotes are only marked expired in the database when the farmer or
+    // the queue next touches them, so report overdue ones as expired here.
+    const now = new Date();
+    return c.json({
+      farmer: profile,
+      addresses,
+      quotes: rows.map((row) => ({
+        ...row,
+        status:
+          (row.status === "pending" || row.status === "invalid_needs_revision") &&
+          row.expiresAt <= now
+            ? ("expired" as const)
+            : row.status,
+        quantityQuintals: kilogramsToQuintals(row.quantityKg),
+        collectedWeightQuintals: row.collectedWeightKg
+          ? kilogramsToQuintals(row.collectedWeightKg)
+          : null,
+      })),
+    });
+  }),
+);
 
 routes.get("/api/admin/deals", async (c) =>
   withVerifiedActor(c, ["admin"], async (db) => {
