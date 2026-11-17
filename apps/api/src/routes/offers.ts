@@ -2,7 +2,9 @@ import { and, desc, eq, inArray, lte } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 
-import { commodities, dailyPrices, deals, farmerProfile, offerEvents, offers } from "../db/schema";
+import { commodities, dailyPrices, deals, farmerAddresses, farmerProfile, offerEvents, offers } from "../db/schema";
+import { createFarmerAddress, ensureFarmerProfileId } from "../lib/farmer-addresses";
+import { MAX_ADDRESSES_PER_FARMER } from "../validation/farmer-address";
 import { getBusinessDate } from "../lib/business-date";
 import { withVerifiedActor } from "../lib/with-verified-actor";
 import {
@@ -83,6 +85,7 @@ routes.get("/api/offers/mine", async (c) =>
           moisturePercent: offers.moisturePercent,
           beanCountPer100g: offers.beanCountPer100g,
           readyOn: offers.readyOn,
+          offerPickupLocation: offers.pickupLocation,
           status: offers.status,
           rejectionReason: offers.rejectionReason,
           submittedAt: offers.submittedAt,
@@ -198,6 +201,11 @@ routes.post("/api/offers", async (c) => {
     );
   }
 
+  const { pickupAddressId, newPickupAddress } = parsed.data;
+  if (Boolean(pickupAddressId) === Boolean(newPickupAddress)) {
+    return c.json({ error: "Choose one pickup address for this quote." }, 400);
+  }
+
   return withVerifiedActor(c, ["farmer"], async (db, actor) => {
     const businessDate = getBusinessDate();
     const now = new Date();
@@ -244,19 +252,31 @@ routes.post("/api/offers", async (c) => {
           };
         }
 
-        await tx
-          .insert(farmerProfile)
-          .values({ authUserId: actor.id })
-          .onConflictDoNothing({ target: farmerProfile.authUserId });
+        const profile = { id: await ensureFarmerProfileId(tx, actor.id) };
 
-        const [profile] = await tx
-          .select({ id: farmerProfile.id })
-          .from(farmerProfile)
-          .where(eq(farmerProfile.authUserId, actor.id))
-          .limit(1);
-
-        if (!profile) {
-          throw new Error("Farmer profile could not be created.");
+        let pickupLocation: string;
+        if (pickupAddressId) {
+          const [saved] = await tx
+            .select({ address: farmerAddresses.address })
+            .from(farmerAddresses)
+            .where(
+              and(
+                eq(farmerAddresses.id, pickupAddressId),
+                eq(farmerAddresses.farmerId, profile.id),
+              ),
+            )
+            .limit(1);
+          if (!saved) {
+            return { kind: "address_missing" as const };
+          }
+          pickupLocation = saved.address;
+        } else {
+          // First quote from a new address: save it for next time.
+          const created = await createFarmerAddress(tx, profile.id, newPickupAddress!);
+          if (!created) {
+            return { kind: "address_limit" as const };
+          }
+          pickupLocation = created.address;
         }
 
         const expiredOffers = await tx
@@ -296,6 +316,7 @@ routes.post("/api/offers", async (c) => {
             moisturePercent: parsed.data.moisturePercent.toString(),
             beanCountPer100g: parsed.data.beanCountPer100g.toString(),
             readyOn: parsed.data.readyOn,
+            pickupLocation,
             submittedAt: now,
             expiresAt: endOfBusinessDay(businessDate),
           })
@@ -312,6 +333,7 @@ routes.post("/api/offers", async (c) => {
             moisturePercent: parsed.data.moisturePercent,
             beanCountPer100g: parsed.data.beanCountPer100g,
             readyOn: parsed.data.readyOn,
+            pickupLocation,
           },
           actorType: "farmer",
           actorId: actor.id,
@@ -322,6 +344,15 @@ routes.post("/api/offers", async (c) => {
 
       if (result.kind === "cocoa_missing") {
         return c.json({ error: "The Cocoa commodity has not been seeded." }, 500);
+      }
+      if (result.kind === "address_missing") {
+        return c.json({ error: "That saved address no longer exists. Choose another one." }, 409);
+      }
+      if (result.kind === "address_limit") {
+        return c.json(
+          { error: `You already have ${MAX_ADDRESSES_PER_FARMER} saved addresses. Pick one of them or delete one in Settings.` },
+          409,
+        );
       }
       if (result.kind === "price_missing") {
         return c.json({ error: "No cocoa price has been published for today." }, 409);

@@ -10,6 +10,13 @@ import {
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import {
+  AddressFields,
+  emptyAddress,
+  trimAddress,
+  validateAddress,
+} from "@/components/address-fields";
+import { AddressPicker, NEW_ADDRESS } from "@/components/address-picker";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ThemedText } from "@/components/themed-text";
@@ -17,10 +24,13 @@ import { ThemedView } from "@/components/themed-view";
 import { Fonts, Radius, Space } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import {
+  getAddresses,
   getTodayPrice,
   formatPricePerKg,
   submitQuote,
+  type AddressInput,
   type DailyCocoaPrice,
+  type FarmerAddress,
   type QuoteInput,
 } from "@/lib/farmbridge-api";
 import { posthog, posthogLogger } from "@/lib/posthog";
@@ -116,6 +126,38 @@ export default function QuoteScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [addresses, setAddresses] = useState<FarmerAddress[]>([]);
+  const [addressesLoading, setAddressesLoading] = useState(true);
+  const [addressesError, setAddressesError] = useState<string | null>(null);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+  const [newAddress, setNewAddress] = useState<AddressInput>(emptyAddress);
+
+  const loadAddresses = useCallback(async () => {
+    setAddressesLoading(true);
+    setAddressesError(null);
+    try {
+      const result = await getAddresses();
+      setAddresses(result.addresses);
+      const preferred = result.addresses.find((a) => a.isDefault) ?? result.addresses[0];
+      setSelectedAddressId(preferred ? preferred.id : NEW_ADDRESS);
+    } catch {
+      setAddressesError("Could not load your saved addresses.");
+    } finally {
+      setAddressesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadAddresses();
+  }, [loadAddresses]);
+
+  const usingNewAddress = selectedAddressId === NEW_ADDRESS;
+  const selectedAddress = addresses.find((a) => a.id === selectedAddressId) ?? null;
+  const pickupSummary = usingNewAddress
+    ? `${newAddress.label.trim()} — ${newAddress.address.trim()}`
+    : selectedAddress
+      ? `${selectedAddress.label} — ${selectedAddress.address}`
+      : "";
 
   const refreshPrice = useCallback(async () => {
     setLoadingPrice(true);
@@ -171,6 +213,16 @@ export default function QuoteScreen() {
       setError("Enter the expected pickup readiness date as DD-MM-YYYY.");
       return;
     }
+    if (usingNewAddress) {
+      const addressProblem = validateAddress(newAddress);
+      if (addressProblem) {
+        setError(addressProblem);
+        return;
+      }
+    } else if (!selectedAddress) {
+      setError("Choose where the driver should collect your cocoa.");
+      return;
+    }
 
     posthog?.capture("quote_review_started", {
       offered_price_per_kg: Number(fields.offeredPricePerKg),
@@ -198,6 +250,9 @@ export default function QuoteScreen() {
       moisturePercent: Number(fields.moisturePercent),
       beanCountPer100g: Number(fields.beanCountPer100g),
       readyOn,
+      ...(usingNewAddress
+        ? { newPickupAddress: trimAddress(newAddress) }
+        : { pickupAddressId: selectedAddress!.id }),
     };
 
     try {
@@ -208,6 +263,7 @@ export default function QuoteScreen() {
         quantity_unit: quantityUnit,
         moisture_percent: input.moisturePercent,
         bean_count_per_100g: input.beanCountPer100g,
+        pickup_address: usingNewAddress ? "new" : "saved",
       });
       posthogLogger.info("quote submission completed", {
         operation: "quote_submission",
@@ -292,7 +348,7 @@ export default function QuoteScreen() {
               YOUR QUOTE IS WITH THE BUYING TEAM
             </ThemedText>
             <ThemedText>
-              You can return to Home. The administrator will review the submitted price, quantity, quality details, and readiness date.
+              You can return to Home. The administrator will review the submitted price, quantity, quality details, readiness date, and pickup address.
             </ThemedText>
             <Button label="View my quotes" variant="outline" onPress={() => router.replace("./my-quotes")} />
             <Button label="Back to Home" onPress={() => router.replace("/(farmer)/(tabs)")} />
@@ -310,6 +366,12 @@ export default function QuoteScreen() {
             <ReviewRow label="Bean moisture" value={`${fields.moisturePercent}%`} />
             <ReviewRow label="Bean count" value={`${fields.beanCountPer100g} per 100 g`} />
             <ReviewRow label="Ready for pickup" value={fields.readyOn} />
+            <ReviewRow label="Pickup address" value={pickupSummary} />
+            {usingNewAddress ? (
+              <ThemedText type="small" themeColor="textSecondary">
+                This address will be saved to your account for next time.
+              </ThemedText>
+            ) : null}
             <ThemedText themeColor="textSecondary">
               Moisture and bean count are self-reported. The administrator reviews these details before deciding whether to accept the quote.
             </ThemedText>
@@ -398,10 +460,48 @@ export default function QuoteScreen() {
               placeholder="DD-MM-YYYY"
               keyboardType="default"
             />
+            <View style={styles.field}>
+              <ThemedText type="label" themeColor="textSecondary">
+                PICKUP ADDRESS
+              </ThemedText>
+              {addressesLoading ? (
+                <ActivityIndicator />
+              ) : addressesError ? (
+                <>
+                  <ThemedText type="small" themeColor="textSecondary">{addressesError}</ThemedText>
+                  <Button label="Retry" variant="outline" onPress={() => void loadAddresses()} />
+                </>
+              ) : (
+                <>
+                  {addresses.length > 0 ? (
+                    <AddressPicker
+                      addresses={addresses}
+                      selectedId={selectedAddressId}
+                      onSelect={(id) => {
+                        setSelectedAddressId(id);
+                        setError(null);
+                      }}
+                      allowNew
+                    />
+                  ) : (
+                    <ThemedText type="small" themeColor="textSecondary">
+                      Where should the driver collect your cocoa? We'll save this address for your next quote.
+                    </ThemedText>
+                  )}
+                  {usingNewAddress ? (
+                    <AddressFields value={newAddress} onChange={setNewAddress} />
+                  ) : null}
+                </>
+              )}
+            </View>
             <ThemedText type="small" themeColor="textSecondary">
               These quality details are self-reported. The administrator will review your quote.
             </ThemedText>
-            <Button label="Review quote  →" onPress={reviewQuote} />
+            <Button
+              label="Review quote  →"
+              onPress={reviewQuote}
+              disabled={addressesLoading || Boolean(addressesError)}
+            />
           </Card>
         ) : null}
 

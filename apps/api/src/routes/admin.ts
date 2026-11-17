@@ -146,12 +146,18 @@ routes.get("/api/admin/offers", async (c) => {
       .select({
         id: offers.id,
         farmerPhoneNumber: user.phoneNumber,
+        farmerName: farmerProfile.aadhaarName,
+        farmerVillage: farmerProfile.village,
+        farmerMandal: farmerProfile.mandal,
+        farmerFarmSizeAcres: farmerProfile.farmSizeAcres,
+        farmerCocoaTreeCount: farmerProfile.cocoaTreeCount,
         offeredPricePerKg: offers.offeredPricePerKg,
         basePricePerKg: dailyPrices.basePricePerKg,
         quantityKg: offers.quantityKg,
         moisturePercent: offers.moisturePercent,
         beanCountPer100g: offers.beanCountPer100g,
         readyOn: offers.readyOn,
+        pickupLocation: offers.pickupLocation,
         status: offers.status,
         submittedAt: offers.submittedAt,
         expiresAt: offers.expiresAt,
@@ -215,6 +221,8 @@ routes.post("/api/admin/offers/:offerId/accept", async (c) => {
           moisturePercent: offer.moisturePercent,
           beanCountPer100g: offer.beanCountPer100g,
           readyOn: offer.readyOn,
+          // The address sent with the quote becomes the deal's pickup location.
+          pickupLocation: offer.pickupLocation,
         })
         .returning();
       await tx.update(offers).set({ status: "accepted" }).where(eq(offers.id, offer.id));
@@ -304,6 +312,11 @@ routes.get("/api/admin/deals", async (c) =>
         id: deals.id,
         offerId: deals.offerId,
         farmerPhoneNumber: user.phoneNumber,
+        farmerName: farmerProfile.aadhaarName,
+        farmerVillage: farmerProfile.village,
+        farmerMandal: farmerProfile.mandal,
+        farmerFarmSizeAcres: farmerProfile.farmSizeAcres,
+        farmerCocoaTreeCount: farmerProfile.cocoaTreeCount,
         offeredPricePerKg: deals.offeredPricePerKg,
         quantityKg: deals.quantityKg,
         moisturePercent: deals.moisturePercent,

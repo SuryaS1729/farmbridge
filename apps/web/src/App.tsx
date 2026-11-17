@@ -73,6 +73,11 @@ type OfferFilter = 'open' | 'pending' | 'invalid_needs_revision'
 type AdminOffer = {
   id: string
   farmerPhoneNumber: string | null
+  farmerName: string | null
+  farmerVillage: string | null
+  farmerMandal: string | null
+  farmerFarmSizeAcres: string | null
+  farmerCocoaTreeCount: number | null
   offeredPricePerKg: string
   basePricePerKg: string
   quantityKg: string
@@ -80,6 +85,7 @@ type AdminOffer = {
   moisturePercent: string
   beanCountPer100g: string
   readyOn: string
+  pickupLocation: string | null
   status: 'pending' | 'invalid_needs_revision'
   submittedAt: string
   expiresAt: string
@@ -88,6 +94,11 @@ type AdminOffer = {
 type AdminDeal = {
   id: string
   farmerPhoneNumber: string | null
+  farmerName: string | null
+  farmerVillage: string | null
+  farmerMandal: string | null
+  farmerFarmSizeAcres: string | null
+  farmerCocoaTreeCount: number | null
   offeredPricePerKg: string
   quantityQuintals: string
   moisturePercent: string
@@ -100,6 +111,42 @@ type AdminDeal = {
   collectedOn: string | null
   collectedWeightKg: string | null
   collectedWeightQuintals: string | null
+}
+
+type FarmerDetails = Pick<
+  AdminOffer,
+  | 'farmerPhoneNumber'
+  | 'farmerName'
+  | 'farmerVillage'
+  | 'farmerMandal'
+  | 'farmerFarmSizeAcres'
+  | 'farmerCocoaTreeCount'
+>
+
+function farmerLabel(farmer: FarmerDetails, fallback = 'this farmer') {
+  return farmer.farmerName ?? farmer.farmerPhoneNumber ?? fallback
+}
+
+function FarmerCell({ farmer }: { farmer: FarmerDetails }) {
+  const place = [farmer.farmerVillage, farmer.farmerMandal].filter(Boolean).join(', ')
+  const farm =
+    farmer.farmerFarmSizeAcres && farmer.farmerCocoaTreeCount
+      ? `${formatPrice(farmer.farmerFarmSizeAcres)} ac · ${farmer.farmerCocoaTreeCount.toLocaleString('en-IN')} trees`
+      : null
+  return (
+    <div className="min-w-44">
+      <span className="font-medium">{farmer.farmerName ?? farmer.farmerPhoneNumber ?? 'Unknown farmer'}</span>
+      {farmer.farmerName && farmer.farmerPhoneNumber ? (
+        <span className="block text-[10px] text-muted-foreground tabular-nums">{farmer.farmerPhoneNumber}</span>
+      ) : null}
+      {place ? (
+        <span className="block text-[10px] text-muted-foreground">{place}</span>
+      ) : (
+        <span className="block text-[10px] text-muted-foreground">Farm details not provided</span>
+      )}
+      {farm ? <span className="block text-[10px] text-muted-foreground tabular-nums">{farm}</span> : null}
+    </div>
+  )
 }
 
 type CollectionForm = {
@@ -851,6 +898,7 @@ function App() {
                     <TableHead className="text-right">Moisture</TableHead>
                     <TableHead className="text-right">Beans / 100 g</TableHead>
                     <TableHead>Ready date</TableHead>
+                    <TableHead>Pickup</TableHead>
                     <TableHead>Submitted</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>
@@ -862,8 +910,7 @@ function App() {
                   {offers.map((offer) => (
                     <TableRow key={offer.id}>
                       <TableCell>
-                        <span className="font-medium">{offer.farmerPhoneNumber ?? 'Unknown phone'}</span>
-                        <span className="block text-[10px] text-muted-foreground">Verified farmer</span>
+                        <FarmerCell farmer={offer} />
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         <span className="font-medium">₹{offer.offeredPricePerKg}</span>
@@ -875,6 +922,9 @@ function App() {
                       <TableCell className="text-right tabular-nums">{offer.moisturePercent}%</TableCell>
                       <TableCell className="text-right tabular-nums">{offer.beanCountPer100g}</TableCell>
                       <TableCell>{formatDateForIndia(offer.readyOn)}</TableCell>
+                      <TableCell className="max-w-64 min-w-44 whitespace-normal">
+                        {offer.pickupLocation ?? <span className="text-muted-foreground">Not provided</span>}
+                      </TableCell>
                       <TableCell>{formatSubmittedAt(offer.submittedAt)}</TableCell>
                       <TableCell>
                         {offer.status === 'pending' ? (
@@ -936,7 +986,7 @@ function App() {
                   <AlertDialogHeader>
                     <AlertDialogTitle>Accept quote and create deal?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      These terms from {acceptingOffer.farmerPhoneNumber ?? 'this farmer'} will be locked into the deal,
+                      These terms from {farmerLabel(acceptingOffer)} will be locked into the deal,
                       even if the base price changes later.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
@@ -985,7 +1035,7 @@ function App() {
                   <DialogHeader>
                     <DialogTitle>Reject quote</DialogTitle>
                     <DialogDescription>
-                      Quote from {rejectingOffer.farmerPhoneNumber ?? 'this farmer'}: ₹{rejectingOffer.offeredPricePerKg} / kg
+                      Quote from {farmerLabel(rejectingOffer)}: ₹{rejectingOffer.offeredPricePerKg} / kg
                       for {rejectingOffer.quantityQuintals} quintals. The farmer sees your reason in My quotes.
                     </DialogDescription>
                   </DialogHeader>
@@ -1052,7 +1102,9 @@ function App() {
                           : undefined
                       return (
                         <TableRow key={deal.id}>
-                          <TableCell className="font-medium">{deal.farmerPhoneNumber ?? 'Unknown phone'}</TableCell>
+                          <TableCell>
+                            <FarmerCell farmer={deal} />
+                          </TableCell>
                           <TableCell className="text-right tabular-nums">₹{deal.offeredPricePerKg}</TableCell>
                           <TableCell className="text-right tabular-nums">{deal.quantityQuintals} qtl</TableCell>
                           <TableCell className="text-right tabular-nums">{deal.moisturePercent}%</TableCell>
@@ -1145,7 +1197,7 @@ function App() {
                   <DialogHeader>
                     <DialogTitle>{deal.pickupScheduledOn ? 'Reschedule pickup' : 'Schedule pickup'}</DialogTitle>
                     <DialogDescription>
-                      Set the date for the driver to collect cocoa from {deal.farmerPhoneNumber ?? 'this farmer'}.
+                      Set the date for the driver to collect cocoa from {farmerLabel(deal)}.
                     </DialogDescription>
                   </DialogHeader>
                   <p className="bg-muted px-3 py-2 text-xs whitespace-pre-wrap">
@@ -1197,7 +1249,7 @@ function App() {
                   <DialogHeader>
                     <DialogTitle>{deal.collectedOn ? 'Edit collection' : 'Record collection'}</DialogTitle>
                     <DialogDescription>
-                      Record the date the driver collected cocoa from {deal.farmerPhoneNumber ?? 'this farmer'} and the weight on the scale.
+                      Record the date the driver collected cocoa from {farmerLabel(deal)} and the weight on the scale.
                     </DialogDescription>
                   </DialogHeader>
                   <p className="bg-muted px-3 py-2 text-xs">

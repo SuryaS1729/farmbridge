@@ -82,6 +82,40 @@ export const farmerProfile = pgTable("farmer_profiles", {
   ),
 ]);
 
+export const farmerAddresses = pgTable(
+  "farmer_addresses",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    farmerId: uuid("farmer_id")
+      .notNull()
+      .references(() => farmerProfile.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    address: text("address").notNull(),
+    isDefault: boolean("is_default").default(false).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    check(
+      "farmer_addresses_label_length_check",
+      sql`length(trim(${table.label})) between 1 and 40`,
+    ),
+    check(
+      "farmer_addresses_address_length_check",
+      sql`length(trim(${table.address})) between 5 and 500`,
+    ),
+    index("farmer_addresses_farmer_idx").on(table.farmerId, table.createdAt),
+    uniqueIndex("farmer_addresses_one_default_idx")
+      .on(table.farmerId)
+      .where(sql`${table.isDefault}`),
+  ],
+);
+
 export const commodities = pgTable(
   "commodities",
   {
@@ -197,6 +231,9 @@ export const offers = pgTable(
     moisturePercent: numeric("moisture_percent").notNull(),
     beanCountPer100g: numeric("bean_count_per_100g").notNull(),
     readyOn: date("ready_on").notNull(),
+    // Copy of the farmer's address at submission time. Null only for quotes
+    // submitted before addresses were collected with the quote.
+    pickupLocation: text("pickup_location"),
     status: offerStatus("status").default("pending").notNull(),
     rejectionReason: text("rejection_reason"),
     submittedAt: timestamp("submitted_at", { withTimezone: true })
@@ -393,10 +430,18 @@ export const userRelations = relations(user, ({ many, one }) => ({
   farmerProfile: one(farmerProfile),
 }));
 
-export const farmerProfileRelations = relations(farmerProfile, ({ one }) => ({
+export const farmerProfileRelations = relations(farmerProfile, ({ one, many }) => ({
   user: one(user, {
     fields: [farmerProfile.authUserId],
     references: [user.id],
+  }),
+  addresses: many(farmerAddresses),
+}));
+
+export const farmerAddressRelations = relations(farmerAddresses, ({ one }) => ({
+  farmer: one(farmerProfile, {
+    fields: [farmerAddresses.farmerId],
+    references: [farmerProfile.id],
   }),
 }));
 

@@ -84,7 +84,7 @@ export default function RootLayout() {
     ? 'done'
     : isAdmin
       ? 'done'
-      : onboarding?.userId === userId
+      : onboarding && onboarding.userId === userId
         ? onboarding.status
         : 'loading';
 
@@ -134,7 +134,14 @@ export default function RootLayout() {
     </OnboardingContext.Provider>
   )
 
-  return posthog ? <PostHogProvider client={posthog}>{content}</PostHogProvider> : content
+  // Screens are tracked by ScreenTracker via Expo Router's usePathname.
+  // PostHog's own screen capture expects plain React Navigation and runs
+  // before Expo Router's navigator mounts, so keep it off.
+  return posthog ? (
+    <PostHogProvider client={posthog} autocapture={{ captureScreens: false }}>
+      {content}
+    </PostHogProvider>
+  ) : content
 }
 const styles = StyleSheet.create({
   loading: {

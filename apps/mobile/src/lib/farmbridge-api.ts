@@ -30,7 +30,10 @@ export type QuoteInput = {
   moisturePercent: number;
   beanCountPer100g: number;
   readyOn: string;
-};
+} & (
+  | { pickupAddressId: string; newPickupAddress?: never }
+  | { newPickupAddress: AddressInput; pickupAddressId?: never }
+);
 
 export type SubmittedOffer = {
   id: string;
@@ -46,6 +49,7 @@ export type FarmerOffer = {
   moisturePercent: string;
   beanCountPer100g: string;
   readyOn: string;
+  offerPickupLocation: string | null;
   status:
     | "pending"
     | "invalid_needs_revision"
@@ -75,7 +79,7 @@ const API_BASE_URL = (
   process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8787"
 ).replace(/\/$/, "");
 
-async function request<T>(path: string, options: { method: "GET" | "POST"; body?: unknown }) {
+async function request<T>(path: string, options: { method: "GET" | "POST" | "PATCH" | "DELETE"; body?: unknown }) {
   const result = await authClient.$fetch<T>(`${API_BASE_URL}${path}`, {
     method: options.method,
     body: options.body,
@@ -150,5 +154,48 @@ export function saveFarmerProfile(input: FarmerProfileInput) {
   return request<FarmerProfileResponse>("/api/farmer/profile", {
     method: "POST",
     body: input,
+  });
+}
+
+export type AddressInput = {
+  label: string;
+  address: string;
+};
+
+export type FarmerAddress = AddressInput & {
+  id: string;
+  isDefault: boolean;
+  createdAt: string;
+};
+
+export function getAddresses() {
+  return request<{ addresses: FarmerAddress[] }>("/api/farmer/addresses", {
+    method: "GET",
+  });
+}
+
+export function createAddress(input: AddressInput & { isDefault?: boolean }) {
+  return request<{ address: FarmerAddress }>("/api/farmer/addresses", {
+    method: "POST",
+    body: input,
+  });
+}
+
+export function updateAddress(id: string, input: AddressInput) {
+  return request<{ address: FarmerAddress }>(`/api/farmer/addresses/${id}`, {
+    method: "PATCH",
+    body: input,
+  });
+}
+
+export function setDefaultAddress(id: string) {
+  return request<{ id: string }>(`/api/farmer/addresses/${id}/default`, {
+    method: "POST",
+  });
+}
+
+export function deleteAddress(id: string) {
+  return request<{ id: string }>(`/api/farmer/addresses/${id}`, {
+    method: "DELETE",
   });
 }

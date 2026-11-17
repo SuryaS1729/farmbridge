@@ -6,6 +6,7 @@ export default function FarmerLayout() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="quote" />
       <Stack.Screen name="my-quotes" />
+      <Stack.Screen name="farm-details" />
     </Stack>
   );
 }

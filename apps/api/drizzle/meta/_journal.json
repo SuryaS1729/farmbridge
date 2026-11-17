@@ -71,6 +71,13 @@
       "when": 1794861953349,
       "tag": "0009_farmer-onboarding-details",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794863529257,
+      "tag": "0010_farmer-addresses",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { saveAddressSchema } from "./farmer-address";
+
 const moneyPattern = /^\d{1,10}(?:\.\d{1,2})?$/;
 const quintalsPattern = /^\d{1,7}(?:\.\d{1,2})?$/;
 const kilogramsPattern = /^\d{1,9}(?:\.\d{1,3})?$/;
@@ -32,6 +34,9 @@ export const publishDailyPriceSchema = z.discriminatedUnion("priceUnit", [
 ]);
 
 const sharedOfferFields = {
+  // Exactly one of these is required; the route checks that.
+  pickupAddressId: z.string().uuid().optional(),
+  newPickupAddress: saveAddressSchema.optional(),
   offeredPricePerKg: z.string().regex(moneyPattern, "Enter a price with up to two decimal places."),
   moisturePercent: z.number().finite().min(0).max(100),
   beanCountPer100g: z.number().finite().positive(),

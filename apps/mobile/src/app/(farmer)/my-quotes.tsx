@@ -1,15 +1,23 @@
 import { useCallback, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AddressPicker } from "@/components/address-picker";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Radius, Space } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import { formatDateForIndia, getMyQuotes, savePickupLocation as saveDealPickupLocation, type FarmerOffer } from "@/lib/farmbridge-api";
+import {
+  formatDateForIndia,
+  getAddresses,
+  getMyQuotes,
+  savePickupLocation as saveDealPickupLocation,
+  type FarmerAddress,
+  type FarmerOffer,
+} from "@/lib/farmbridge-api";
 import { posthog, posthogLogger } from "@/lib/posthog";
 
 function formatSubmittedDate(value: string) {
@@ -52,7 +60,10 @@ export default function MyQuotesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pickupLocations, setPickupLocations] = useState<Record<string, string>>({});
+  const [addresses, setAddresses] = useState<FarmerAddress[]>([]);
+  // The deal whose pickup address is being changed, and the address picked.
+  const [changingDealId, setChangingDealId] = useState<string | null>(null);
+  const [chosenAddressId, setChosenAddressId] = useState<string | null>(null);
   const [savingPickupDealId, setSavingPickupDealId] = useState<string | null>(null);
   const [pickupLocationError, setPickupLocationError] = useState<string | null>(null);
   const [pickupLocationNotice, setPickupLocationNotice] = useState<string | null>(null);
@@ -61,13 +72,9 @@ export default function MyQuotesScreen() {
     if (showSpinner) setLoading(true);
     setError(null);
     try {
-      const result = await getMyQuotes();
+      const [result, addressResult] = await Promise.all([getMyQuotes(), getAddresses()]);
       setQuotes(result.offers);
-      setPickupLocations(Object.fromEntries(
-        result.offers
-          .filter((quote) => quote.dealId)
-          .map((quote) => [quote.dealId!, quote.pickupLocation ?? ""]),
-      ));
+      setAddresses(addressResult.addresses);
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -91,14 +98,25 @@ export default function MyQuotesScreen() {
     await loadQuotes(false);
   }
 
-  async function submitPickupLocation(dealId: string) {
-    const pickupLocation = (pickupLocations[dealId] ?? "").trim();
+  function startChangingAddress(dealId: string, currentLocation: string | null) {
     setPickupLocationError(null);
     setPickupLocationNotice(null);
-    if (pickupLocation.length < 5 || pickupLocation.length > 500) {
-      setPickupLocationError("Enter a location between 5 and 500 characters.");
+    setChangingDealId(dealId);
+    const current = addresses.find((a) => a.address === currentLocation)
+      ?? addresses.find((a) => a.isDefault)
+      ?? addresses[0];
+    setChosenAddressId(current?.id ?? null);
+  }
+
+  async function submitPickupLocation(dealId: string) {
+    const chosen = addresses.find((a) => a.id === chosenAddressId);
+    setPickupLocationError(null);
+    setPickupLocationNotice(null);
+    if (!chosen) {
+      setPickupLocationError("Choose one of your saved addresses.");
       return;
     }
+    const pickupLocation = chosen.address;
 
     setSavingPickupDealId(dealId);
     try {
@@ -106,7 +124,7 @@ export default function MyQuotesScreen() {
       setQuotes((current) => current.map((quote) =>
         quote.dealId === dealId ? { ...quote, pickupLocation: result.pickupLocation } : quote,
       ));
-      setPickupLocations((current) => ({ ...current, [dealId]: result.pickupLocation }));
+      setChangingDealId(null);
       const isUpdate = Boolean(quotes.find((quote) => quote.dealId === dealId)?.pickupLocation);
       posthog?.capture("pickup_location_saved", {
         is_update: isUpdate,
@@ -215,6 +233,9 @@ export default function MyQuotesScreen() {
                     <Detail label="Moisture" value={`${quote.moisturePercent}%`} />
                     <Detail label="Bean count" value={`${quote.beanCountPer100g} per 100 g`} />
                     <Detail label="Expected ready date" value={formatDateForIndia(quote.readyOn)} />
+                    {quote.offerPickupLocation && !accepted ? (
+                      <Detail label="Pickup address" value={quote.offerPickupLocation} />
+                    ) : null}
                   </View>
 
                   {quote.status === "pending" ? (
@@ -281,50 +302,68 @@ export default function MyQuotesScreen() {
                         </View>
                       ) : quote.dealId ? (
                         <View style={[styles.pickupLocationBox, { borderTopColor: theme.border }]}>
-                          <ThemedText type="label" themeColor="textSecondary">PICKUP LOCATION FOR THE DRIVER</ThemedText>
-                          <ThemedText type="small" themeColor="textSecondary">
-                            Tell us where your cocoa will be ready for collection. Include your village, a landmark, and directions the driver can follow.
-                          </ThemedText>
-                          <TextInput
-                            multiline
-                            maxLength={500}
-                            placeholder="Village, landmark, farm or collection point, and directions"
-                            placeholderTextColor={theme.textSecondary}
-                            textAlignVertical="top"
-                            value={pickupLocations[quote.dealId] ?? quote.pickupLocation ?? ""}
-                            onChangeText={(value) => {
-                              setPickupLocations((current) => ({ ...current, [quote.dealId!]: value }));
-                              setPickupLocationError(null);
-                              setPickupLocationNotice(null);
-                            }}
-                            style={[
-                              styles.pickupLocationInput,
-                              {
-                                color: theme.text,
-                                borderColor: theme.border,
-                                backgroundColor: theme.backgroundElement,
-                              },
-                            ]}
-                          />
-                          {pickupLocationError ? (
+                          <ThemedText type="label" themeColor="textSecondary">PICKUP ADDRESS FOR THE DRIVER</ThemedText>
+                          {quote.pickupLocation ? (
+                            <ThemedText type="small">{quote.pickupLocation}</ThemedText>
+                          ) : (
+                            <ThemedText type="small" themeColor="textSecondary">
+                              No pickup address yet. Choose one so the admin team can arrange a driver.
+                            </ThemedText>
+                          )}
+
+                          {changingDealId === quote.dealId ? (
+                            addresses.length > 0 ? (
+                              <>
+                                <AddressPicker
+                                  addresses={addresses}
+                                  selectedId={chosenAddressId}
+                                  onSelect={setChosenAddressId}
+                                  disabled={savingPickupDealId === quote.dealId}
+                                />
+                                <View style={styles.pickupActions}>
+                                  <Button
+                                    label="Cancel"
+                                    variant="outline"
+                                    style={styles.flex}
+                                    disabled={savingPickupDealId === quote.dealId}
+                                    onPress={() => setChangingDealId(null)}
+                                  />
+                                  <Button
+                                    label="Use this address"
+                                    style={styles.flex}
+                                    loading={savingPickupDealId === quote.dealId}
+                                    onPress={() => void submitPickupLocation(quote.dealId!)}
+                                  />
+                                </View>
+                              </>
+                            ) : (
+                              <>
+                                <ThemedText type="small" themeColor="textSecondary">
+                                  You have no saved addresses. Add one in Settings, then come back here.
+                                </ThemedText>
+                                <Button
+                                  label="Open Settings"
+                                  variant="outline"
+                                  onPress={() => router.push("/settings")}
+                                />
+                              </>
+                            )
+                          ) : (
+                            <Button
+                              label={quote.pickupLocation ? "Change pickup address" : "Choose pickup address"}
+                              variant="outline"
+                              disabled={changingDealId !== null}
+                              onPress={() => startChangingAddress(quote.dealId!, quote.pickupLocation)}
+                            />
+                          )}
+
+                          {pickupLocationError && changingDealId === quote.dealId ? (
                             <ThemedText type="small" style={styles.pickupError}>{pickupLocationError}</ThemedText>
                           ) : pickupLocationNotice === quote.dealId ? (
                             <ThemedText type="small" themeColor="textSecondary">
-                              Location shared. The admin team can now arrange a driver.
-                            </ThemedText>
-                          ) : quote.pickupLocation ? (
-                            <ThemedText type="small" themeColor="textSecondary">
-                              Your location is saved. You can update it if needed.
+                              Pickup address updated. The admin team will send the driver there.
                             </ThemedText>
                           ) : null}
-                          <Button
-                            label={savingPickupDealId === quote.dealId
-                              ? "Saving location…"
-                              : quote.pickupLocation ? "Update pickup location" : "Share pickup location"}
-                            variant="outline"
-                            loading={savingPickupDealId === quote.dealId}
-                            onPress={() => void submitPickupLocation(quote.dealId!)}
-                          />
                         </View>
                       ) : null}
                     </View>
@@ -398,14 +437,8 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: Space.three,
   },
-  pickupLocationInput: {
-    minHeight: 100,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: Radius.control,
-    padding: Space.three,
-    fontSize: 14,
-    lineHeight: 21,
-  },
+  pickupActions: { flexDirection: "row", gap: Space.three },
+  flex: { flex: 1 },
   pickupError: { color: "#9A4237" },
   collectedLocation: { gap: Space.one },
   state: { flex: 1, minHeight: 180, alignItems: "center", justifyContent: "center", gap: Space.three },
