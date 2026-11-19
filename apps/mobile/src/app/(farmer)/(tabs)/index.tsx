@@ -1,13 +1,13 @@
-import { useCallback, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import {
   ActivityIndicator,
-  AppState,
   Pressable,
   ScrollView,
   StyleSheet,
   View,
 } from "react-native";
-import { router, useFocusEffect } from "expo-router";
+import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "@/components/ui/button";
@@ -15,56 +15,32 @@ import { Card } from "@/components/ui/card";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Space } from "@/constants/theme";
+import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus";
 import { useTheme } from "@/hooks/use-theme";
 import { authClient } from "@/lib/auth-client";
 import { posthog } from "@/lib/posthog";
 import {
   formatDateForIndia,
   formatPricePerKg,
-  getTodayPrice,
-  type DailyCocoaPrice,
 } from "@/lib/farmbridge-api";
+import { loadState, queryKeys, todayPriceQuery } from "@/lib/queries";
 
 export default function FarmerHomeScreen() {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
   const [error, setError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
-  const [price, setPrice] = useState<DailyCocoaPrice | null>(null);
   const [priceUnit, setPriceUnit] = useState<"kg" | "quintal">("kg");
-  const [priceError, setPriceError] = useState<string | null>(null);
-  const [loadingPrice, setLoadingPrice] = useState(true);
-  const hasLoadedPrice = useRef(false);
   const { data: session, isPending } = authClient.useSession();
 
-  const refreshPrice = useCallback(async (showLoading = true) => {
-    if (showLoading || !hasLoadedPrice.current) {
-      setLoadingPrice(true);
-    }
-    setPriceError(null);
-
-    try {
-      const result = await getTodayPrice();
-      setPrice(result.price);
-      hasLoadedPrice.current = true;
-    } catch {
-      setPriceError("Could not load today's cocoa price.");
-    } finally {
-      setLoadingPrice(false);
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      void refreshPrice(false);
-      const subscription = AppState.addEventListener("change", (state) => {
-        if (state === "active") {
-          void refreshPrice(false);
-        }
-      });
-
-      return () => subscription.remove();
-    }, [refreshPrice]),
+  // Returning to the app refetches via the global focusManager; returning to this
+  // tab from another screen refetches here. Both only fire once the price is 30s old.
+  const priceQuery = useQuery(todayPriceQuery);
+  useRefreshOnFocus(queryKeys.todayPrice);
+  const price = priceQuery.data?.price ?? null;
+  const { loading: loadingPrice, error: priceError } = loadState(
+    priceQuery,
+    "Could not load today's cocoa price.",
   );
 
   async function signOut() {
@@ -193,8 +169,8 @@ export default function FarmerHomeScreen() {
             <Button
               label="Retry price lookup"
               variant="outline"
-              onPress={() => void refreshPrice()}
-              loading={loadingPrice}
+              onPress={() => void priceQuery.refetch()}
+              loading={priceQuery.isFetching}
             />
           ) : null}
           <Button

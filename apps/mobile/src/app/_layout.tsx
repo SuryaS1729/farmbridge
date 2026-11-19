@@ -1,5 +1,7 @@
+import { QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { authClient } from '@/lib/auth-client';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { queryClient } from '@/lib/query-client';
+import { useEffect } from 'react';
 import { useFonts } from 'expo-font';
 import { Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -7,8 +9,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { PostHogProvider } from 'posthog-react-native';
 import { posthog } from '@/lib/posthog';
-import { getFarmerProfile } from '@/lib/farmbridge-api';
-import { OnboardingContext } from '@/lib/onboarding';
+import { profileQuery } from '@/lib/queries';
 import { Button } from '@/components/ui/button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -27,17 +28,25 @@ function ScreenTracker() {
   return null;
 }
 
+// The provider sits above everything (including the loading and error screens)
+// so the root layout itself can use queries, e.g. for the onboarding check.
 export default function RootLayout() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppRoot />
+    </QueryClientProvider>
+  );
+}
+
+function AppRoot() {
   const { data: session, isPending } = authClient.useSession();
   const userId = session?.user.id;
   const isAdmin = (session?.user as { role?: string } | undefined)?.role === 'admin';
 
-  // Keyed by user so a sign-out/sign-in as someone else re-checks.
-  const [onboarding, setOnboarding] = useState<{
-    userId: string;
-    status: OnboardingStatus;
-  } | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
+  // Same cache entry as Settings and Farm details. Saving the farm details form
+  // writes the new profile into it, which flips this to 'done' and opens the app.
+  // The cache is cleared on sign-out, so the next farmer is always re-checked.
+  const profile = useQuery({ ...profileQuery, enabled: Boolean(userId) && !isAdmin });
 
   useEffect(() => {
     if (!session?.user.id) {
@@ -47,45 +56,23 @@ export default function RootLayout() {
     posthog?.identify(session.user.id);
   }, [session?.user.id]);
 
+  // Phones are often shared in a family: once signed out, drop every cached
+  // quote, address and profile so the next person can never see them.
+  // Runs after the farmer screens have unmounted, so no query is mid-use.
   useEffect(() => {
-    if (!userId || isAdmin) {
-      return;
+    if (!isPending && !userId) {
+      queryClient.clear();
     }
+  }, [isPending, userId]);
 
-    let cancelled = false;
-    setOnboarding({ userId, status: 'loading' });
-
-    getFarmerProfile()
-      .then(({ onboarded }) => {
-        if (!cancelled) {
-          setOnboarding({ userId, status: onboarded ? 'done' : 'needed' });
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setOnboarding({ userId, status: 'error' });
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [userId, isAdmin, retryCount]);
-
-  const markOnboarded = useCallback(() => {
-    if (userId) {
-      setOnboarding({ userId, status: 'done' });
-    }
-  }, [userId]);
-
-  const onboardingContext = useMemo(() => ({ markOnboarded }), [markOnboarded]);
-
-  const onboardingStatus: OnboardingStatus = !session
+  // Cached data wins over a failed background refetch, so a signal drop later
+  // never kicks an onboarded farmer back to the error screen.
+  const onboardingStatus: OnboardingStatus = !session || isAdmin
     ? 'done'
-    : isAdmin
-      ? 'done'
-      : onboarding && onboarding.userId === userId
-        ? onboarding.status
+    : profile.data
+      ? profile.data.onboarded ? 'done' : 'needed'
+      : profile.isError || profile.fetchStatus === 'paused'
+        ? 'error' // failed, or offline: shows "Check your connection"; resumes by itself on reconnect
         : 'loading';
 
   if (isPending || onboardingStatus === 'loading') {
@@ -103,7 +90,7 @@ export default function RootLayout() {
           <ThemedText themeColor="textSecondary" style={styles.centerText}>
             Could not reach Farmbridge. Check your connection and try again.
           </ThemedText>
-          <Button label="Try again" onPress={() => setRetryCount((n) => n + 1)} />
+          <Button label="Try again" onPress={() => void profile.refetch()} />
           <Button
             label="Sign out"
             variant="outline"
@@ -115,7 +102,7 @@ export default function RootLayout() {
   }
 
   const content = (
-    <OnboardingContext.Provider value={onboardingContext}>
+    <>
       <ScreenTracker />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Protected guard={!session}>
@@ -131,7 +118,7 @@ export default function RootLayout() {
         </Stack.Protected>
       </Stack>
       <AnimatedSplashOverlay />
-    </OnboardingContext.Provider>
+    </>
   )
 
   // Screens are tracked by ScreenTracker via Expo Router's usePathname.

@@ -1,4 +1,5 @@
-import { useCallback, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -7,7 +8,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import { router, useFocusEffect } from "expo-router";
+import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -21,18 +22,23 @@ import { Card } from "@/components/ui/card";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { BottomTabInset, Space } from "@/constants/theme";
+import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus";
 import { useTheme } from "@/hooks/use-theme";
+import {
+  actionErrorMessage,
+  addressesQuery,
+  loadState,
+  profileQuery,
+  queryKeys,
+} from "@/lib/queries";
 import { authClient } from "@/lib/auth-client";
 import {
   createAddress,
   deleteAddress,
-  getAddresses,
-  getFarmerProfile,
   setDefaultAddress,
   updateAddress,
   type AddressInput,
   type FarmerAddress,
-  type FarmerProfile,
 } from "@/lib/farmbridge-api";
 
 const MAX_ADDRESSES = 10;
@@ -60,48 +66,45 @@ export default function SettingsScreen() {
   const phoneNumber = (session?.user as { phoneNumber?: string | null } | undefined)
     ?.phoneNumber;
 
-  const [addresses, setAddresses] = useState<FarmerAddress[]>([]);
-  const [profile, setProfile] = useState<FarmerProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [editing, setEditing] = useState<Editing>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoadError(null);
-    try {
-      const [addressResult, profileResult] = await Promise.all([
-        getAddresses(),
-        getFarmerProfile(),
-      ]);
-      setAddresses(addressResult.addresses);
-      setProfile(profileResult.profile);
-    } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Could not load your settings.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Shared with Quote, My Quotes and Farm details: an edit in one shows up everywhere.
+  const addressResult = useQuery(addressesQuery);
+  const profileResult = useQuery(profileQuery);
+  useRefreshOnFocus(queryKeys.addresses, queryKeys.profile);
+  const addresses = addressResult.data?.addresses ?? [];
+  const profile = profileResult.data?.profile ?? null;
+  const addressLoad = loadState(addressResult);
+  const profileLoad = loadState(profileResult);
+  const loading = addressLoad.loading || profileLoad.loading;
+  const loadError = addressLoad.error ?? profileLoad.error;
 
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load]),
-  );
+  function reload() {
+    void addressResult.refetch();
+    void profileResult.refetch();
+  }
+
+  // One mutation for every address action (add, edit, make default, delete):
+  // they all change the same list, and only one runs at a time. `id` drives
+  // which row shows "Saving…".
+  const addressMutation = useMutation({
+    mutationFn: ({ action }: { id: string; action: () => Promise<unknown> }) => action(),
+    // Returning the promise keeps the mutation pending until the list has refetched,
+    // so the busy state never clears onto an out-of-date list.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.addresses }),
+  });
+  const busyId = addressMutation.isPending ? addressMutation.variables.id : null;
 
   async function run(id: string, action: () => Promise<unknown>) {
     setError(null);
-    setBusyId(id);
     try {
-      await action();
-      await load();
+      await addressMutation.mutateAsync({ id, action });
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
+      setError(actionErrorMessage(err, "Something went wrong. Try again."));
       return false;
-    } finally {
-      setBusyId(null);
     }
   }
 
@@ -192,7 +195,7 @@ export default function SettingsScreen() {
         ) : loadError ? (
           <Card style={styles.card}>
             <ThemedText themeColor="textSecondary">{loadError}</ThemedText>
-            <Button label="Try again" variant="outline" onPress={() => void load()} />
+            <Button label="Try again" variant="outline" onPress={reload} />
           </Card>
         ) : (
           <>

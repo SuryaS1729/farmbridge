@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -24,16 +25,19 @@ import { ThemedView } from "@/components/themed-view";
 import { Fonts, Radius, Space } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import {
-  getAddresses,
-  getTodayPrice,
   formatPricePerKg,
   submitQuote,
   type AddressInput,
-  type DailyCocoaPrice,
-  type FarmerAddress,
   type QuoteInput,
 } from "@/lib/farmbridge-api";
 import { posthog, posthogLogger } from "@/lib/posthog";
+import {
+  actionErrorMessage,
+  addressesQuery,
+  loadState,
+  queryKeys,
+  todayPriceQuery,
+} from "@/lib/queries";
 
 type QuoteFields = {
   offeredPricePerKg: string;
@@ -117,39 +121,49 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
 
 export default function QuoteScreen() {
   const insets = useSafeAreaInsets();
-  const [price, setPrice] = useState<DailyCocoaPrice | null>(null);
-  const [loadingPrice, setLoadingPrice] = useState(true);
-  const [priceError, setPriceError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [fields, setFields] = useState<QuoteFields>(emptyFields);
   const [quantityUnit, setQuantityUnit] = useState<QuantityUnit>("quintal");
   const [reviewing, setReviewing] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [addresses, setAddresses] = useState<FarmerAddress[]>([]);
-  const [addressesLoading, setAddressesLoading] = useState(true);
-  const [addressesError, setAddressesError] = useState<string | null>(null);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [newAddress, setNewAddress] = useState<AddressInput>(emptyAddress);
 
-  const loadAddresses = useCallback(async () => {
-    setAddressesLoading(true);
-    setAddressesError(null);
-    try {
-      const result = await getAddresses();
-      setAddresses(result.addresses);
-      const preferred = result.addresses.find((a) => a.isDefault) ?? result.addresses[0];
-      setSelectedAddressId(preferred ? preferred.id : NEW_ADDRESS);
-    } catch {
-      setAddressesError("Could not load your saved addresses.");
-    } finally {
-      setAddressesLoading(false);
-    }
-  }, []);
+  const submitMutation = useMutation({
+    mutationFn: submitQuote,
+    // Explicit even though it's the app default: a quote must never be queued offline
+    // and sent later, when the farmer has moved on or the day's price has changed.
+    networkMode: "always",
+    onSuccess: (_result, input) => {
+      // My Quotes must show the new quote; a typed-in address is saved to the farmer's list too.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.quotes });
+      if (input.newPickupAddress) void queryClient.invalidateQueries({ queryKey: queryKeys.addresses });
+    },
+  });
+  const submitting = submitMutation.isPending;
 
-  useEffect(() => {
-    void loadAddresses();
-  }, [loadAddresses]);
+  // Opening this screen refetches anything older than 30s, so the price shown is current.
+  const priceQuery = useQuery(todayPriceQuery);
+  const price = priceQuery.data?.price ?? null;
+  const { loading: loadingPrice, error: priceError } = loadState(
+    priceQuery,
+    "Could not load today's cocoa price.",
+  );
+
+  const addressQuery = useQuery(addressesQuery);
+  const addresses = addressQuery.data?.addresses ?? [];
+  const { loading: addressesLoading, error: addressesError } = loadState(
+    addressQuery,
+    "Could not load your saved addresses.",
+  );
+
+  // Pre-select the default address once, the first time addresses arrive;
+  // later refetches must not undo the farmer's own choice.
+  if (selectedAddressId === null && addressQuery.data) {
+    const preferred = addressQuery.data.addresses.find((a) => a.isDefault) ?? addressQuery.data.addresses[0];
+    setSelectedAddressId(preferred ? preferred.id : NEW_ADDRESS);
+  }
 
   const usingNewAddress = selectedAddressId === NEW_ADDRESS;
   const selectedAddress = addresses.find((a) => a.id === selectedAddressId) ?? null;
@@ -158,23 +172,6 @@ export default function QuoteScreen() {
     : selectedAddress
       ? `${selectedAddress.label} — ${selectedAddress.address}`
       : "";
-
-  const refreshPrice = useCallback(async () => {
-    setLoadingPrice(true);
-    setPriceError(null);
-    try {
-      const result = await getTodayPrice();
-      setPrice(result.price);
-    } catch {
-      setPriceError("Could not load today's cocoa price.");
-    } finally {
-      setLoadingPrice(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshPrice();
-  }, [refreshPrice]);
 
   function setField<K extends keyof QuoteFields>(key: K, value: QuoteFields[K]) {
     setFields((current) => ({ ...current, [key]: value }));
@@ -241,8 +238,6 @@ export default function QuoteScreen() {
       setError("Enter the expected pickup readiness date as DD-MM-YYYY.");
       return;
     }
-    setSubmitting(true);
-
     const input: QuoteInput = {
       offeredPricePerKg: fields.offeredPricePerKg,
       quantity: fields.quantity,
@@ -256,7 +251,7 @@ export default function QuoteScreen() {
     };
 
     try {
-      await submitQuote(input);
+      await submitMutation.mutateAsync(input);
       posthog?.capture("quote_submitted", {
         offered_price_per_kg: Number(fields.offeredPricePerKg),
         quantity: Number(fields.quantity),
@@ -275,13 +270,7 @@ export default function QuoteScreen() {
         operation: "quote_submission",
         error_type: "request_failed",
       });
-      setError(
-        submissionError instanceof Error
-          ? submissionError.message
-          : "Could not submit your quote. Please try again.",
-      );
-    } finally {
-      setSubmitting(false);
+      setError(actionErrorMessage(submissionError, "Could not submit your quote. Please try again."));
     }
   }
 
@@ -319,7 +308,7 @@ export default function QuoteScreen() {
         ) : priceError ? (
           <Card style={styles.priceCard}>
             <ThemedText themeColor="textSecondary">{priceError}</ThemedText>
-            <Button label="Retry" variant="outline" onPress={refreshPrice} />
+            <Button label="Retry" variant="outline" onPress={() => void priceQuery.refetch()} />
           </Card>
         ) : price ? (
           <Card style={styles.priceCard}>
@@ -469,7 +458,7 @@ export default function QuoteScreen() {
               ) : addressesError ? (
                 <>
                   <ThemedText type="small" themeColor="textSecondary">{addressesError}</ThemedText>
-                  <Button label="Retry" variant="outline" onPress={() => void loadAddresses()} />
+                  <Button label="Retry" variant="outline" onPress={() => void addressQuery.refetch()} />
                 </>
               ) : (
                 <>

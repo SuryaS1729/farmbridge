@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -17,7 +17,7 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Space } from "@/constants/theme";
 import { authClient } from "@/lib/auth-client";
-import { getFarmerProfile, type FarmerProfile } from "@/lib/farmbridge-api";
+import { loadState, profileQuery } from "@/lib/queries";
 
 export default function EditFarmDetailsScreen() {
   const insets = useSafeAreaInsets();
@@ -25,31 +25,10 @@ export default function EditFarmDetailsScreen() {
   const phoneNumber = (session?.user as { phoneNumber?: string | null } | undefined)
     ?.phoneNumber;
 
-  const [profile, setProfile] = useState<FarmerProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [attempt, setAttempt] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    getFarmerProfile()
-      .then((result) => {
-        if (!cancelled) setProfile(result.profile);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Could not load your farm details.");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [attempt]);
+  // Usually already cached from Settings, so the form opens filled in.
+  const profileResult = useQuery(profileQuery);
+  const profile = profileResult.data?.profile ?? null;
+  const { loading, error } = loadState(profileResult);
 
   return (
     <ThemedView style={styles.screen}>
@@ -92,7 +71,7 @@ export default function EditFarmDetailsScreen() {
           ) : error ? (
             <View style={styles.intro}>
               <ThemedText themeColor="textSecondary">{error}</ThemedText>
-              <Button label="Try again" variant="outline" onPress={() => setAttempt((n) => n + 1)} />
+              <Button label="Try again" variant="outline" onPress={() => void profileResult.refetch()} />
             </View>
           ) : (
             <FarmDetailsForm

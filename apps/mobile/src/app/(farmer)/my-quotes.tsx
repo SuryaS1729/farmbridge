@@ -1,6 +1,7 @@
-import { useCallback, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { router, useFocusEffect } from "expo-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AddressPicker } from "@/components/address-picker";
@@ -9,16 +10,21 @@ import { Card } from "@/components/ui/card";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Radius, Space } from "@/constants/theme";
+import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus";
 import { useTheme } from "@/hooks/use-theme";
 import {
   formatDateForIndia,
-  getAddresses,
-  getMyQuotes,
   savePickupLocation as saveDealPickupLocation,
-  type FarmerAddress,
   type FarmerOffer,
 } from "@/lib/farmbridge-api";
 import { posthog, posthogLogger } from "@/lib/posthog";
+import {
+  actionErrorMessage,
+  addressesQuery,
+  loadState,
+  queryKeys,
+  quotesQuery,
+} from "@/lib/queries";
 
 function formatSubmittedDate(value: string) {
   const date = new Date(value);
@@ -56,46 +62,46 @@ function dealStatusLabel(status: NonNullable<FarmerOffer["dealStatus"]>) {
 export default function MyQuotesScreen() {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
-  const [quotes, setQuotes] = useState<FarmerOffer[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  // Only for a refresh the farmer asked for (pull or button), not background refetches.
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [addresses, setAddresses] = useState<FarmerAddress[]>([]);
   // The deal whose pickup address is being changed, and the address picked.
   const [changingDealId, setChangingDealId] = useState<string | null>(null);
   const [chosenAddressId, setChosenAddressId] = useState<string | null>(null);
-  const [savingPickupDealId, setSavingPickupDealId] = useState<string | null>(null);
   const [pickupLocationError, setPickupLocationError] = useState<string | null>(null);
   const [pickupLocationNotice, setPickupLocationNotice] = useState<string | null>(null);
 
-  const loadQuotes = useCallback(async (showSpinner = true) => {
-    if (showSpinner) setLoading(true);
-    setError(null);
-    try {
-      const [result, addressResult] = await Promise.all([getMyQuotes(), getAddresses()]);
-      setQuotes(result.offers);
-      setAddresses(addressResult.addresses);
-    } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : "Could not load your quotes. Please try again.",
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  // Opening the screen shows cached quotes instantly and refreshes them in the background.
+  const quotesResult = useQuery(quotesQuery);
+  const addressResult = useQuery(addressesQuery);
+  useRefreshOnFocus(queryKeys.quotes, queryKeys.addresses);
+  const quotes = quotesResult.data?.offers ?? [];
+  const addresses = addressResult.data?.addresses ?? [];
+  // Addresses only matter for changing a pickup location, so only quotes gate the screen.
+  const { loading, error } = loadState(quotesResult);
 
-  useFocusEffect(
-    useCallback(() => {
-      void loadQuotes();
-    }, [loadQuotes]),
-  );
+  const pickupMutation = useMutation({
+    mutationFn: ({ dealId, pickupLocation }: { dealId: string; pickupLocation: string }) =>
+      saveDealPickupLocation(dealId, pickupLocation),
+    // The API returns the saved location, so update the cached quote directly; no refetch needed.
+    onSuccess: (result, { dealId }) => {
+      // quotesQuery.queryKey carries the data type, so `current` is typed.
+      queryClient.setQueryData(quotesQuery.queryKey, (current) =>
+        current && {
+          ...current,
+          offers: current.offers.map((quote) =>
+            quote.dealId === dealId ? { ...quote, pickupLocation: result.pickupLocation } : quote,
+          ),
+        },
+      );
+    },
+  });
+  const savingPickupDealId = pickupMutation.isPending ? pickupMutation.variables.dealId : null;
 
   async function refresh() {
     setRefreshing(true);
-    await loadQuotes(false);
+    await Promise.all([quotesResult.refetch(), addressResult.refetch()]);
+    setRefreshing(false);
   }
 
   function startChangingAddress(dealId: string, currentLocation: string | null) {
@@ -118,12 +124,8 @@ export default function MyQuotesScreen() {
     }
     const pickupLocation = chosen.address;
 
-    setSavingPickupDealId(dealId);
     try {
-      const result = await saveDealPickupLocation(dealId, pickupLocation);
-      setQuotes((current) => current.map((quote) =>
-        quote.dealId === dealId ? { ...quote, pickupLocation: result.pickupLocation } : quote,
-      ));
+      await pickupMutation.mutateAsync({ dealId, pickupLocation });
       setChangingDealId(null);
       const isUpdate = Boolean(quotes.find((quote) => quote.dealId === dealId)?.pickupLocation);
       posthog?.capture("pickup_location_saved", {
@@ -135,17 +137,16 @@ export default function MyQuotesScreen() {
       });
       setPickupLocationNotice(dealId);
     } catch (saveError) {
-      setPickupLocationError(
-        saveError instanceof Error ? saveError.message : "Could not save your pickup location.",
-      );
-    } finally {
-      setSavingPickupDealId(null);
+      setPickupLocationError(actionErrorMessage(saveError, "Could not save your pickup location."));
     }
   }
 
   return (
     <ThemedView style={styles.screen}>
       <ScrollView
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={theme.accent} />
+        }
         contentContainerStyle={[
           styles.content,
           {
@@ -181,7 +182,7 @@ export default function MyQuotesScreen() {
           <Card style={styles.stateCard}>
             <ThemedText type="subtitle">Could not load quotes</ThemedText>
             <ThemedText themeColor="textSecondary">{error}</ThemedText>
-            <Button label="Try again" onPress={() => void loadQuotes()} loading={refreshing} />
+            <Button label="Try again" onPress={() => void refresh()} loading={refreshing} />
           </Card>
         ) : quotes.length === 0 ? (
           <Card style={styles.stateCard}>

@@ -1,3 +1,4 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { StyleSheet, TextInput, View, type TextInputProps } from "react-native";
 
@@ -5,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Space } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
+import { actionErrorMessage, profileQuery } from "@/lib/queries";
 import {
   saveFarmerProfile,
   type FarmerProfile,
@@ -35,8 +37,16 @@ export function FarmDetailsForm({
   initial?: FarmerProfile | null;
   phoneNumber: string | null | undefined;
   submitLabel: string;
-  onSaved: (profile: FarmerProfile) => void;
+  /** Optional: the saved profile is already written to the shared query cache. */
+  onSaved?: (profile: FarmerProfile) => void;
 }) {
+  const queryClient = useQueryClient();
+  const saveMutation = useMutation({
+    mutationFn: saveFarmerProfile,
+    // Every screen reading the profile (and the onboarding gate in _layout) updates at once.
+    onSuccess: (result) => queryClient.setQueryData(profileQuery.queryKey, result),
+  });
+  const saving = saveMutation.isPending;
   const theme = useTheme();
   const [aadhaarName, setAadhaarName] = useState(initial?.aadhaarName ?? "");
   const [village, setVillage] = useState(initial?.village ?? "");
@@ -45,7 +55,6 @@ export function FarmDetailsForm({
   const [cocoaTreeCount, setCocoaTreeCount] = useState(
     initial?.cocoaTreeCount ? String(initial.cocoaTreeCount) : "",
   );
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function validate(): string | null {
@@ -69,25 +78,18 @@ export function FarmDetailsForm({
     }
 
     setError(null);
-    setSaving(true);
 
     try {
-      const result = await saveFarmerProfile({
+      const result = await saveMutation.mutateAsync({
         aadhaarName: aadhaarName.trim(),
         village: village.trim(),
         mandal: mandal.trim(),
         farmSizeAcres,
         cocoaTreeCount: Number(cocoaTreeCount),
       });
-      if (result.profile) onSaved(result.profile);
+      if (result.profile) onSaved?.(result.profile);
     } catch (saveError) {
-      setError(
-        saveError instanceof Error
-          ? saveError.message
-          : "Could not save your details. Try again.",
-      );
-    } finally {
-      setSaving(false);
+      setError(actionErrorMessage(saveError, "Could not save your details. Try again."));
     }
   }
 

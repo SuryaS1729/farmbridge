@@ -13,11 +13,9 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Space } from "@/constants/theme";
 import { authClient } from "@/lib/auth-client";
-import { useOnboarding } from "@/lib/onboarding";
 
 export default function FarmDetailsScreen() {
   const insets = useSafeAreaInsets();
-  const { markOnboarded } = useOnboarding();
   const { data: session } = authClient.useSession();
   const phoneNumber = (session?.user as { phoneNumber?: string | null } | undefined)
     ?.phoneNumber;
@@ -62,7 +60,6 @@ export default function FarmDetailsScreen() {
             <FarmDetailsForm
               phoneNumber={phoneNumber}
               submitLabel="Save and continue  →"
-              onSaved={markOnboarded}
             />
 
             <Pressable onPress={() => authClient.signOut()} style={styles.signOut}>
