@@ -1,5 +1,6 @@
 import { RiArrowDownSLine } from '@remixicon/react'
-import { useEffect, useState } from 'react'
+import { keepPreviousData, queryOptions, useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query'
+import { useState } from 'react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,6 +58,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { useAdminAuth } from '@/lib/admin-auth'
 import { apiRequest, getErrorMessage } from '@/lib/api'
+import { queryKeys } from '@/lib/queries'
 import {
   formatDateForIndia,
   formatPrice,
@@ -239,76 +241,140 @@ function convertPriceInput(value: string, from: PriceUnit, to: PriceUnit) {
   return formatPrice(`${tenThousandthsPerKg / 100n}.${(tenThousandthsPerKg % 100n).toString().padStart(2, '0')}`)
 }
 
+/** Turns the filter form into API params, or explains which date is malformed. */
+function buildOfferParams(
+  filters: OfferFilters,
+): { params: Record<string, string> } | { error: string } {
+  const params: Record<string, string> = {}
+  for (const [key, value] of Object.entries(filters)) {
+    if (!value.trim()) continue
+    if (key === 'readyFrom' || key === 'readyTo') {
+      const isoDate = indianDateToIso(value.trim())
+      if (!isoDate) return { error: 'Enter filter dates in DD-MM-YYYY format.' }
+      params[key] = isoDate
+    } else {
+      params[key] = value.trim()
+    }
+  }
+  return { params }
+}
+
+function priceInputFor(data: TodayPrice | undefined, unit: PriceUnit) {
+  if (!data?.price) return ''
+  return formatPrice(unit === 'kg' ? data.price.basePricePerKg : data.price.basePricePerQuintal)
+}
+
+// Shared by the page and the route loader, so a preload fills the same cache entries.
+export const todayPriceQueryOptions = queryOptions({
+  queryKey: queryKeys.todayPrice,
+  queryFn: () => apiRequest<TodayPrice>('/api/prices/today'),
+})
+
+export const dealsQueryOptions = queryOptions({
+  queryKey: queryKeys.deals,
+  queryFn: () => apiRequest<{ deals: AdminDeal[] }>('/api/admin/deals'),
+})
+
+export function offerQueueQueryOptions(status: OfferFilter, params: Record<string, string>) {
+  return queryOptions({
+    queryKey: queryKeys.offerQueue(status, params),
+    queryFn: () =>
+      apiRequest<OfferQueue>('/api/admin/offers?' + new URLSearchParams({ status, ...params }).toString()),
+  })
+}
+
+/** What the dashboard shows on first open: open quotes, no filters. */
+export const defaultOfferQueueQueryOptions = offerQueueQueryOptions('open', {})
+
 export function DashboardPage() {
+  const queryClient = useQueryClient()
   const { session } = useAdminAuth()
-  const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [today, setToday] = useState<TodayPrice | null>(null)
   const [priceInput, setPriceInput] = useState('')
+  const [priceInputSeeded, setPriceInputSeeded] = useState(false)
   const [priceUnit, setPriceUnit] = useState<PriceUnit>('quintal')
   const [offerFilter, setOfferFilter] = useState<OfferFilter>('open')
+  // `offerFilters` is the form being typed; `appliedOfferParams` is what the query uses.
   const [offerFilters, setOfferFilters] = useState<OfferFilters>(emptyOfferFilters)
-  const [offers, setOffers] = useState<AdminOffer[]>([])
-  const [deals, setDeals] = useState<AdminDeal[]>([])
+  const [appliedOfferParams, setAppliedOfferParams] = useState<Record<string, string>>({})
+  const [offerFilterError, setOfferFilterError] = useState<string | null>(null)
   const [pickupInputs, setPickupInputs] = useState<Record<string, string>>({})
-  const [pickupDealId, setPickupDealId] = useState<string | null>(null)
   const [pickupEditingDealId, setPickupEditingDealId] = useState<string | null>(null)
   const [collectionEditingDealId, setCollectionEditingDealId] = useState<string | null>(null)
   const [collectionForm, setCollectionForm] = useState<CollectionForm>({ collectedOn: '', quantity: '', quantityUnit: 'quintal' })
-  const [collectionSavingDealId, setCollectionSavingDealId] = useState<string | null>(null)
   const [dealError, setDealError] = useState<string | null>(null)
-  const [decisionOfferId, setDecisionOfferId] = useState<string | null>(null)
   const [acceptingOffer, setAcceptingOffer] = useState<AdminOffer | null>(null)
   const [rejectingOffer, setRejectingOffer] = useState<AdminOffer | null>(null)
   const [rejectReason, setRejectReason] = useState('')
   const [decisionError, setDecisionError] = useState<string | null>(null)
-  const [loadingOffers, setLoadingOffers] = useState(false)
-  const [offerError, setOfferError] = useState<string | null>(null)
+  const todayQuery = useQuery(todayPriceQueryOptions)
+  const today = todayQuery.data ?? null
 
-  async function loadDashboard() {
-    const data = await apiRequest<TodayPrice>('/api/prices/today')
-    setToday(data)
-    setPriceInput(
-      data.price ? formatPrice(priceUnit === 'kg' ? data.price.basePricePerKg : data.price.basePricePerQuintal) : '',
-    )
+  // Fill the price input once from the first load only, so background refetches
+  // never overwrite a price the admin is in the middle of typing.
+  if (!priceInputSeeded && todayQuery.data) {
+    setPriceInputSeeded(true)
+    setPriceInput(priceInputFor(todayQuery.data, priceUnit))
   }
 
-  async function loadOffers(
-    status: OfferFilter = offerFilter,
-    filters: OfferFilters = offerFilters,
-  ) {
-    setLoadingOffers(true)
-    setOfferError(null)
-    try {
-      const params = new URLSearchParams({ status })
-      for (const [key, value] of Object.entries(filters)) {
-        if (!value.trim()) continue
-        if (key === 'readyFrom' || key === 'readyTo') {
-          const isoDate = indianDateToIso(value.trim())
-          if (!isoDate) {
-            setOfferError('Enter filter dates in DD-MM-YYYY format.')
-            return
-          }
-          params.set(key, isoDate)
-        } else {
-          params.set(key, value.trim())
-        }
-      }
-      const data = await apiRequest<OfferQueue>('/api/admin/offers?' + params.toString())
-      setOffers(data.offers)
-    } catch (requestError) {
-      setOfferError(getErrorMessage(requestError))
-    } finally {
-      setLoadingOffers(false)
-    }
+  const offersQuery = useQuery({
+    ...offerQueueQueryOptions(offerFilter, appliedOfferParams),
+    // Keep the current table on screen while a new status/filter loads, instead of flashing a spinner.
+    placeholderData: keepPreviousData,
+  })
+  const offers = offersQuery.data?.offers ?? []
+  const loadingOffers = offersQuery.isPending || (offersQuery.isError && offersQuery.isFetching)
+  const offerError =
+    offerFilterError ?? (offersQuery.isError ? getErrorMessage(offersQuery.error) : null)
+
+  const dealsQuery = useQuery(dealsQueryOptions)
+  const deals = dealsQuery.data?.deals ?? []
+
+  const loadError = todayQuery.error ?? dealsQuery.error
+  const pageError = error ?? (loadError ? getErrorMessage(loadError) : null)
+
+  /** Marks data stale and waits for any on-screen queries to refetch. */
+  function invalidate(...keys: QueryKey[]) {
+    return Promise.all(keys.map((queryKey) => queryClient.invalidateQueries({ queryKey })))
   }
 
-  async function loadDeals() {
-    const data = await apiRequest<{ deals: AdminDeal[] }>('/api/admin/deals')
-    setDeals(data.deals)
-  }
+  // Each mutation stays pending until the data it affects has refetched, so the table never
+  // shows the old row after "Saving…" clears. ['farmers'] also covers every farmer detail page.
+  const pickupMutation = useMutation({
+    mutationFn: ({ dealId, pickupScheduledOn }: { dealId: string; pickupScheduledOn: string }) =>
+      apiRequest(`/api/admin/deals/${dealId}/pickup-date`, { method: 'POST', body: { pickupScheduledOn } }),
+    onSuccess: () => invalidate(queryKeys.deals, queryKeys.farmers),
+  })
 
+  const collectionMutation = useMutation({
+    mutationFn: ({ dealId, ...body }: { dealId: string } & CollectionForm) =>
+      apiRequest(`/api/admin/deals/${dealId}/collection`, { method: 'POST', body }),
+    onSuccess: () => invalidate(queryKeys.deals, queryKeys.farmers),
+  })
+
+  const acceptMutation = useMutation({
+    mutationFn: (offerId: string) => apiRequest(`/api/admin/offers/${offerId}/accept`, { method: 'POST' }),
+    onSuccess: () => invalidate(queryKeys.offers, queryKeys.deals, queryKeys.farmers),
+  })
+
+  const rejectMutation = useMutation({
+    mutationFn: ({ offerId, reason }: { offerId: string; reason: string }) =>
+      apiRequest(`/api/admin/offers/${offerId}/reject`, { method: 'POST', body: { reason } }),
+    onSuccess: () => invalidate(queryKeys.offers, queryKeys.farmers),
+  })
+
+  const publishMutation = useMutation({
+    mutationFn: (body: { priceUnit: PriceUnit; basePrice: string }) =>
+      apiRequest('/api/admin/prices/today', { method: 'POST', body }),
+    // A new price can flag pending quotes for revision, so offers and farmer histories change too.
+    onSuccess: () => invalidate(queryKeys.todayPrice, queryKeys.offers, queryKeys.deals, queryKeys.farmers),
+  })
+
+  const deciding = acceptMutation.isPending || rejectMutation.isPending
+
+  // Validation messages and API errors share one message slot per area, so the
+  // handlers below use mutateAsync and route failures into that slot.
   async function schedulePickupDate(deal: AdminDeal) {
     const enteredDate = pickupInputs[deal.id] ?? (deal.pickupScheduledOn ? formatDateForIndia(deal.pickupScheduledOn) : '')
     const pickupScheduledOn = indianDateToIso(enteredDate.trim())
@@ -316,20 +382,13 @@ export function DashboardPage() {
       setDealError('Enter the pickup date in DD-MM-YYYY format.')
       return
     }
-    setPickupDealId(deal.id)
     setDealError(null)
     try {
-      await apiRequest(`/api/admin/deals/${deal.id}/pickup-date`, {
-        method: 'POST',
-        body: { pickupScheduledOn },
-      })
-      await loadDeals()
+      await pickupMutation.mutateAsync({ dealId: deal.id, pickupScheduledOn })
       setPickupEditingDealId(null)
       setNotice('Pickup date saved and shown in the farmer’s quote history.')
     } catch (requestError) {
       setDealError(getErrorMessage(requestError))
-    } finally {
-      setPickupDealId(null)
     }
   }
 
@@ -359,35 +418,29 @@ export function DashboardPage() {
       setDealError('Enter the collected weight.')
       return
     }
-    setCollectionSavingDealId(deal.id)
     setDealError(null)
     try {
-      await apiRequest(`/api/admin/deals/${deal.id}/collection`, {
-        method: 'POST',
-        body: { collectedOn, quantity, quantityUnit: collectionForm.quantityUnit },
+      await collectionMutation.mutateAsync({
+        dealId: deal.id,
+        collectedOn,
+        quantity,
+        quantityUnit: collectionForm.quantityUnit,
       })
-      await loadDeals()
       setCollectionEditingDealId(null)
       setNotice('Collection recorded and shown in the farmer’s quote history.')
     } catch (requestError) {
       setDealError(getErrorMessage(requestError))
-    } finally {
-      setCollectionSavingDealId(null)
     }
   }
 
   async function acceptOffer(offer: AdminOffer) {
-    setDecisionOfferId(offer.id)
     setDecisionError(null)
     try {
-      await apiRequest(`/api/admin/offers/${offer.id}/accept`, { method: 'POST' })
-      await Promise.all([loadOffers(), loadDeals()])
+      await acceptMutation.mutateAsync(offer.id)
       setAcceptingOffer(null)
       setNotice('Quote accepted and deal created with the submitted terms.')
     } catch (requestError) {
       setDecisionError(getErrorMessage(requestError))
-    } finally {
-      setDecisionOfferId(null)
     }
   }
 
@@ -397,30 +450,15 @@ export function DashboardPage() {
       setDecisionError('Enter a rejection reason. It is shown to the farmer and kept in the audit record.')
       return
     }
-    setDecisionOfferId(offer.id)
     setDecisionError(null)
     try {
-      await apiRequest(`/api/admin/offers/${offer.id}/reject`, {
-        method: 'POST',
-        body: { reason },
-      })
-      await loadOffers()
+      await rejectMutation.mutateAsync({ offerId: offer.id, reason })
       setRejectingOffer(null)
       setNotice('Quote rejected and the reason recorded.')
     } catch (requestError) {
       setDecisionError(getErrorMessage(requestError))
-    } finally {
-      setDecisionOfferId(null)
     }
   }
-
-  useEffect(() => {
-    void Promise.all([loadDashboard(), loadOffers(), loadDeals()]).catch((loadError) => {
-      setError(getErrorMessage(loadError))
-    })
-    // Load once when the dashboard opens; the handlers below refresh as needed.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   async function publishPrice(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -436,31 +474,37 @@ export function DashboardPage() {
       return
     }
 
-    setBusy(true)
     try {
-      await apiRequest('/api/admin/prices/today', {
-        method: 'POST',
-        body: { priceUnit, basePrice: priceInput },
-      })
-      await Promise.all([loadDashboard(), loadOffers(), loadDeals()])
+      await publishMutation.mutateAsync({ priceUnit, basePrice: priceInput })
+      setPriceInput(priceInputFor(queryClient.getQueryData<TodayPrice>(queryKeys.todayPrice), priceUnit))
       setNotice('Today’s Cocoa price is published.')
     } catch (requestError) {
       setError(getErrorMessage(requestError))
-    } finally {
-      setBusy(false)
     }
   }
 
   const activeFilterCount = Object.values(offerFilters).filter((value) => value.trim() !== '').length
 
-  async function applyOfferFilters(event: React.FormEvent<HTMLFormElement>) {
+  function applyOfferFilters(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    await loadOffers(offerFilter, offerFilters)
+    const result = buildOfferParams(offerFilters)
+    if ('error' in result) {
+      setOfferFilterError(result.error)
+      return
+    }
+    setOfferFilterError(null)
+    // Same filters → same query key, so refetch explicitly to keep "Apply" meaning "reload".
+    if (JSON.stringify(result.params) === JSON.stringify(appliedOfferParams)) {
+      void offersQuery.refetch()
+    } else {
+      setAppliedOfferParams(result.params)
+    }
   }
 
   function clearOfferFilters() {
     setOfferFilters(emptyOfferFilters)
-    void loadOffers(offerFilter, emptyOfferFilters)
+    setOfferFilterError(null)
+    setAppliedOfferParams({})
   }
 
   if (!session) return null
@@ -551,14 +595,14 @@ export function DashboardPage() {
                     {priceUnit === 'kg' ? 'Up to four decimal places.' : 'Up to two decimal places.'} Publishing again updates today’s
                     price and records a revision.
                   </p>
-                  <Button type="submit" className="mt-2 w-fit" disabled={busy}>
-                    {busy ? 'Publishing…' : today?.price ? 'Update today’s price' : 'Publish today’s price'}
+                  <Button type="submit" className="mt-2 w-fit" disabled={publishMutation.isPending}>
+                    {publishMutation.isPending ? 'Publishing…' : today?.price ? 'Update today’s price' : 'Publish today’s price'}
                   </Button>
                 </form>
 
-                {error ? (
+                {pageError ? (
                   <Alert variant="destructive" role="alert">
-                    <AlertDescription>{error}</AlertDescription>
+                    <AlertDescription>{pageError}</AlertDescription>
                   </Alert>
                 ) : null}
                 {notice ? (
@@ -607,7 +651,6 @@ export function DashboardPage() {
                   onValueChange={(value) => {
                     if (!value) return
                     setOfferFilter(value)
-                    void loadOffers(value)
                   }}
                 >
                   <SelectTrigger aria-label="Show quotes" className="min-w-44">
@@ -673,16 +716,21 @@ export function DashboardPage() {
             ) : offerError ? (
               <div className="flex min-h-32 items-center justify-center gap-3 border border-dashed text-xs text-destructive" role="alert">
                 <span>{offerError}</span>
-                <Button size="xs" variant="outline" onClick={() => void loadOffers()}>
-                  Retry
-                </Button>
+                {offerFilterError ? null : (
+                  <Button size="xs" variant="outline" onClick={() => void offersQuery.refetch()}>
+                    Retry
+                  </Button>
+                )}
               </div>
             ) : offers.length === 0 ? (
               <div className="flex min-h-32 items-center justify-center border border-dashed text-xs text-muted-foreground">
                 No quotes in this view yet.
               </div>
             ) : (
-              <Table>
+              <Table
+                aria-busy={offersQuery.isPlaceholderData}
+                className={offersQuery.isPlaceholderData ? 'opacity-60 transition-opacity' : undefined}
+              >
                 <TableHeader>
                   <TableRow>
                     <TableHead>Farmer</TableHead>
@@ -733,7 +781,7 @@ export function DashboardPage() {
                         >
                           <Button
                             size="xs"
-                            disabled={decisionOfferId !== null || offer.status !== 'pending'}
+                            disabled={deciding || offer.status !== 'pending'}
                             onClick={() => {
                               setDecisionError(null)
                               setAcceptingOffer(offer)
@@ -744,7 +792,7 @@ export function DashboardPage() {
                           <Button
                             size="xs"
                             variant="outline"
-                            disabled={decisionOfferId !== null}
+                            disabled={deciding}
                             onClick={() => {
                               setDecisionError(null)
                               setRejectReason('')
@@ -770,7 +818,7 @@ export function DashboardPage() {
           <AlertDialog
             open={acceptingOffer !== null}
             onOpenChange={(open) => {
-              if (!open && decisionOfferId === null) setAcceptingOffer(null)
+              if (!open && !deciding) setAcceptingOffer(null)
             }}
           >
             <AlertDialogContent>
@@ -797,12 +845,12 @@ export function DashboardPage() {
                   </dl>
                   {decisionError ? <p className="text-xs text-destructive" role="alert">{decisionError}</p> : null}
                   <AlertDialogFooter>
-                    <AlertDialogCancel disabled={decisionOfferId !== null}>Cancel</AlertDialogCancel>
+                    <AlertDialogCancel disabled={deciding}>Cancel</AlertDialogCancel>
                     <AlertDialogAction
-                      disabled={decisionOfferId !== null}
+                      disabled={deciding}
                       onClick={() => void acceptOffer(acceptingOffer)}
                     >
-                      {decisionOfferId === acceptingOffer.id ? 'Accepting…' : 'Accept & create deal'}
+                      {acceptMutation.isPending ? 'Accepting…' : 'Accept & create deal'}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </>
@@ -813,7 +861,7 @@ export function DashboardPage() {
           <Dialog
             open={rejectingOffer !== null}
             onOpenChange={(open) => {
-              if (!open && decisionOfferId === null) setRejectingOffer(null)
+              if (!open && !deciding) setRejectingOffer(null)
             }}
           >
             <DialogContent className="sm:max-w-md">
@@ -844,11 +892,11 @@ export function DashboardPage() {
                   </div>
                   {decisionError ? <p className="text-xs text-destructive" role="alert">{decisionError}</p> : null}
                   <DialogFooter>
-                    <DialogClose render={<Button type="button" variant="outline" disabled={decisionOfferId !== null} />}>
+                    <DialogClose render={<Button type="button" variant="outline" disabled={deciding} />}>
                       Cancel
                     </DialogClose>
-                    <Button type="submit" variant="destructive" disabled={decisionOfferId !== null}>
-                      {decisionOfferId === rejectingOffer.id ? 'Rejecting…' : 'Reject quote'}
+                    <Button type="submit" variant="destructive" disabled={deciding}>
+                      {rejectMutation.isPending ? 'Rejecting…' : 'Reject quote'}
                     </Button>
                   </DialogFooter>
                 </form>
@@ -863,7 +911,11 @@ export function DashboardPage() {
               <CardDescription>The newest 100 deals, with terms copied from the accepted quote.</CardDescription>
             </CardHeader>
             <CardContent>
-              {deals.length === 0 ? (
+              {dealsQuery.isPending ? (
+                <div className="flex min-h-32 items-center justify-center border border-dashed text-xs text-muted-foreground">
+                  Loading deals…
+                </div>
+              ) : deals.length === 0 ? (
                 <div className="flex min-h-32 items-center justify-center border border-dashed text-xs text-muted-foreground">
                   No deals have been created yet.
                 </div>
@@ -1012,8 +1064,8 @@ export function DashboardPage() {
                   {dealError ? <p className="text-xs text-destructive" role="alert">{dealError}</p> : null}
                   <DialogFooter>
                     <DialogClose render={<Button type="button" variant="outline" />}>Cancel</DialogClose>
-                    <Button type="submit" disabled={pickupDealId !== null}>
-                      {pickupDealId === deal.id ? 'Saving…' : deal.pickupScheduledOn ? 'Save new pickup date' : 'Save pickup date'}
+                    <Button type="submit" disabled={pickupMutation.isPending}>
+                      {pickupMutation.isPending ? 'Saving…' : deal.pickupScheduledOn ? 'Save new pickup date' : 'Save pickup date'}
                     </Button>
                   </DialogFooter>
                 </form>
@@ -1093,8 +1145,8 @@ export function DashboardPage() {
                   {dealError ? <p className="text-xs text-destructive" role="alert">{dealError}</p> : null}
                   <DialogFooter>
                     <DialogClose render={<Button type="button" variant="outline" />}>Cancel</DialogClose>
-                    <Button type="submit" disabled={collectionSavingDealId !== null}>
-                      {collectionSavingDealId === deal.id ? 'Saving…' : deal.collectedOn ? 'Save changes' : 'Save collection'}
+                    <Button type="submit" disabled={collectionMutation.isPending}>
+                      {collectionMutation.isPending ? 'Saving…' : deal.collectedOn ? 'Save changes' : 'Save collection'}
                     </Button>
                   </DialogFooter>
                 </form>

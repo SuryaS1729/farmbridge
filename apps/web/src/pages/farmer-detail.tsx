@@ -1,6 +1,6 @@
 import { RiArrowLeftLine } from '@remixicon/react'
 import { Link, useParams } from '@tanstack/react-router'
-import { useCallback, useEffect, useState } from 'react'
+import { queryOptions, useQuery } from '@tanstack/react-query'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/table'
 import { apiRequest, getErrorMessage } from '@/lib/api'
 import { formatDateForIndia, formatPrice, formatSubmittedAt } from '@/lib/format'
+import { queryKeys } from '@/lib/queries'
 
 type FarmerProfile = {
   userId: string
@@ -124,32 +125,24 @@ function Stat({ label, value }: { label: string; value: string }) {
   )
 }
 
+/** Shared by the page and the route loader, so a preload fills the same cache entry. */
+export function farmerDetailQueryOptions(farmerId: string) {
+  return queryOptions({
+    queryKey: queryKeys.farmer(farmerId),
+    queryFn: () => apiRequest<FarmerDetail>(`/api/admin/farmers/${encodeURIComponent(farmerId)}`),
+  })
+}
+
 export function FarmerDetailPage() {
   const { farmerId } = useParams({ from: '/farmers/$farmerId' })
-  const [detail, setDetail] = useState<FarmerDetail | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const fetchDetail = useCallback(async () => {
-    try {
-      const data = await apiRequest<FarmerDetail>(`/api/admin/farmers/${encodeURIComponent(farmerId)}`)
-      setDetail(data)
-      setError(null)
-    } catch (requestError) {
-      setError(getErrorMessage(requestError))
-    } finally {
-      setLoading(false)
-    }
-  }, [farmerId])
-
-  useEffect(() => {
-    void fetchDetail()
-  }, [fetchDetail])
+  // Keyed by farmerId, so a slow response for a previous farmer can never overwrite this one.
+  const detailQuery = useQuery(farmerDetailQueryOptions(farmerId))
+  const detail = detailQuery.data
+  const loading = detailQuery.isPending || (detailQuery.isError && detailQuery.isFetching)
+  const error = detailQuery.isError ? getErrorMessage(detailQuery.error) : null
 
   function retry() {
-    setLoading(true)
-    setError(null)
-    void fetchDetail()
+    void detailQuery.refetch()
   }
 
   const farmer = detail?.farmer

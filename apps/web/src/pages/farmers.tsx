@@ -1,6 +1,7 @@
 import { RiSearchLine } from '@remixicon/react'
 import { Link } from '@tanstack/react-router'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { queryOptions, useQuery } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -24,6 +25,7 @@ import {
 } from '@/components/ui/table'
 import { apiRequest, getErrorMessage } from '@/lib/api'
 import { formatPrice, formatSubmittedAt } from '@/lib/format'
+import { queryKeys } from '@/lib/queries'
 
 type AdminFarmer = {
   userId: string
@@ -66,34 +68,24 @@ function matchesSearch(farmer: AdminFarmer, query: string) {
   return haystack.includes(query)
 }
 
+/** Shared by the page and the route loader, so a preload fills the same cache entry. */
+export const farmersQueryOptions = queryOptions({
+  queryKey: queryKeys.farmers,
+  queryFn: () => apiRequest<{ farmers: AdminFarmer[] }>('/api/admin/farmers'),
+})
+
 export function FarmersPage() {
-  const [farmers, setFarmers] = useState<AdminFarmer[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [onboardingFilter, setOnboardingFilter] = useState<OnboardingFilter>('all')
 
-  // `loading` starts true, so the first fetch only needs to settle it.
-  const fetchFarmers = useCallback(async () => {
-    try {
-      const data = await apiRequest<{ farmers: AdminFarmer[] }>('/api/admin/farmers')
-      setFarmers(data.farmers)
-      setError(null)
-    } catch (requestError) {
-      setError(getErrorMessage(requestError))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void fetchFarmers()
-  }, [fetchFarmers])
+  const farmersQuery = useQuery(farmersQueryOptions)
+  const farmers = useMemo(() => farmersQuery.data?.farmers ?? [], [farmersQuery.data])
+  // Show the spinner again while "Try again" refetches after an error.
+  const loading = farmersQuery.isPending || (farmersQuery.isError && farmersQuery.isFetching)
+  const error = farmersQuery.isError ? getErrorMessage(farmersQuery.error) : null
 
   function loadFarmers() {
-    setLoading(true)
-    setError(null)
-    void fetchFarmers()
+    void farmersQuery.refetch()
   }
 
   const onboardedCount = farmers.filter((farmer) => farmer.onboardedAt).length
