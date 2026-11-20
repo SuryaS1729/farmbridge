@@ -17,63 +17,30 @@ import { ThemedView } from "@/components/themed-view";
 import { Space } from "@/constants/theme";
 import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus";
 import { useTheme } from "@/hooks/use-theme";
-import { authClient } from "@/lib/auth-client";
-import { posthog } from "@/lib/posthog";
 import {
   formatDateForIndia,
   formatPricePerKg,
 } from "@/lib/farmbridge-api";
-import { loadState, queryKeys, todayPriceQuery } from "@/lib/queries";
+import { loadState, profileQuery, queryKeys, todayPriceQuery } from "@/lib/queries";
 
 export default function FarmerHomeScreen() {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
-  const [error, setError] = useState<string | null>(null);
-  const [signingOut, setSigningOut] = useState(false);
   const [priceUnit, setPriceUnit] = useState<"kg" | "quintal">("kg");
-  const { data: session, isPending } = authClient.useSession();
 
   // Returning to the app refetches via the global focusManager; returning to this
   // tab from another screen refetches here. Both only fire once the price is 30s old.
   const priceQuery = useQuery(todayPriceQuery);
   useRefreshOnFocus(queryKeys.todayPrice);
   const price = priceQuery.data?.price ?? null;
+
+  // Already cached by the onboarding check in _layout, so this costs no extra request.
+  const profile = useQuery(profileQuery);
+  const firstName = profile.data?.profile?.aadhaarName?.trim().split(/\s+/)[0];
   const { loading: loadingPrice, error: priceError } = loadState(
     priceQuery,
     "Could not load today's cocoa price.",
   );
-
-  async function signOut() {
-    setError(null);
-    setSigningOut(true);
-
-    try {
-      const { error: signOutError } = await authClient.signOut();
-      if (signOutError) {
-        setError(
-          signOutError.message ?? "Could not sign out. Please try again.",
-        );
-        return;
-      }
-
-      posthog?.reset();
-    } catch {
-      setError("Could not sign out. Please try again.");
-    } finally {
-      setSigningOut(false);
-    }
-  }
-
-  if (isPending) {
-    return (
-      <ThemedView style={styles.loading}>
-        <ActivityIndicator />
-      </ThemedView>
-    );
-  }
-
-  const accountLabel =
-    session?.user.phoneNumber ?? session?.user.name ?? session?.user.email;
 
   return (
     <ThemedView style={styles.screen}>
@@ -96,13 +63,8 @@ export default function FarmerHomeScreen() {
         </View>
 
         <View style={styles.intro}>
-          <ThemedText type="label" themeColor="textSecondary">
-            YOUR FARMER ACCOUNT
-          </ThemedText>
-          <ThemedText type="title">Welcome to Farmbridge.</ThemedText>
-          <ThemedText themeColor="textSecondary">
-            Your phone number is verified. This is where your cocoa offers and
-            farm updates will come together.
+          <ThemedText type="title">
+            {firstName ? `Welcome, ${firstName}` : "Welcome"}
           </ThemedText>
         </View>
 
@@ -184,36 +146,6 @@ export default function FarmerHomeScreen() {
             onPress={() => router.push("../my-quotes")}
           />
         </Card>
-
-        <Card tone="dark" style={styles.accountCard}>
-          <ThemedText type="label" themeColor="accent">
-            PHONE SIGN-IN
-          </ThemedText>
-          <ThemedText type="figure" themeColor="paper">
-            {accountLabel ?? "Farmbridge account"}
-          </ThemedText>
-          <ThemedText type="label" themeColor="onDark">
-            VERIFIED ACCOUNT
-          </ThemedText>
-        </Card>
-
-        <View style={styles.actions}>
-          <Button
-            label={signingOut ? "Signing out…" : "Sign out"}
-            variant="outline"
-            onPress={signOut}
-            loading={signingOut}
-          />
-          {error ? (
-            <ThemedText
-              type="small"
-              themeColor="textSecondary"
-              style={styles.centerText}
-            >
-              {error}
-            </ThemedText>
-          ) : null}
-        </View>
       </ScrollView>
     </ThemedView>
   );
@@ -222,11 +154,6 @@ export default function FarmerHomeScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-  },
-  loading: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
   },
   content: {
     flexGrow: 1,
@@ -243,10 +170,6 @@ const styles = StyleSheet.create({
   },
   intro: {
     gap: Space.two,
-  },
-  accountCard: {
-    gap: Space.three,
-    padding: Space.four,
   },
   priceCard: {
     gap: Space.three,
@@ -275,11 +198,5 @@ const styles = StyleSheet.create({
   priceUnitLabel: {
     fontSize: 11,
     lineHeight: 16,
-  },
-  actions: {
-    gap: Space.two,
-  },
-  centerText: {
-    textAlign: "center",
   },
 });

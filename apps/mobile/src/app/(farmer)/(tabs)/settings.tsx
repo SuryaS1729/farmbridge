@@ -32,6 +32,7 @@ import {
   queryKeys,
 } from "@/lib/queries";
 import { authClient } from "@/lib/auth-client";
+import { posthog } from "@/lib/posthog";
 import {
   createAddress,
   deleteAddress,
@@ -325,7 +326,11 @@ export default function SettingsScreen() {
                   onPress={() =>
                     Alert.alert("Sign out?", "You'll need an SMS code to sign in again.", [
                       { text: "Cancel", style: "cancel" },
-                      { text: "Sign out", style: "destructive", onPress: () => void authClient.signOut() },
+                      { text: "Sign out", style: "destructive", onPress: () => {
+                        // Forget this farmer in analytics so the next person on a shared phone isn't linked to them.
+                        posthog?.reset();
+                        void authClient.signOut();
+                      } },
                     ])
                   }
                 />
