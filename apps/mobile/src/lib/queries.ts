@@ -18,6 +18,9 @@ export const queryKeys = {
 export const todayPriceQuery = queryOptions({
   queryKey: queryKeys.todayPrice,
   queryFn: getTodayPrice,
+  // Poll so a price published while the farmer is on Home or Quote shows up within a minute.
+  // TanStack pauses this when the app is in the background (focusManager) or offline (onlineManager).
+  refetchInterval: 60_000,
 });
 
 export const profileQuery = queryOptions({

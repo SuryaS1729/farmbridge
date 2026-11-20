@@ -140,6 +140,12 @@ export default function QuoteScreen() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.quotes });
       if (input.newPickupAddress) void queryClient.invalidateQueries({ queryKey: queryKeys.addresses });
     },
+    onError: () => {
+      // The usual server rejections are "price not published yet" and "offer below today's
+      // price", and both mean the price on screen may be out of date. Refetch it so the
+      // farmer sees the current price next to the error.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.todayPrice });
+    },
   });
   const submitting = submitMutation.isPending;
 
