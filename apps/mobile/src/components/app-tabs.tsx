@@ -8,10 +8,20 @@ export default function AppTabs() {
   const colors = Colors[scheme === "unspecified" ? "light" : scheme];
 
   return (
+    // Every colour is set explicitly. Anything left unset on Android is filled in from the
+    // phone's Material You wallpaper colours, so the tab bar would look different on every phone.
     <NativeTabs
       backgroundColor={colors.background}
-      indicatorColor={colors.accent}
-      labelStyle={{ selected: { color: colors.text } }}
+      iconColor={{ default: colors.textSecondary, selected: colors.text }}
+      labelStyle={{
+        default: { color: colors.textSecondary },
+        selected: { color: colors.text },
+      }}
+      tintColor={colors.accent}
+      indicatorColor={colors.accentSoft}
+      rippleColor={colors.accentSoft}
+      badgeBackgroundColor={colors.accent}
+      badgeTextColor={colors.accentText}
     >
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>

@@ -98,7 +98,7 @@ export default function FarmerHomeScreen() {
                   >
                     <ThemedText
                       type="smallBold"
-                      themeColor={selected ? "ink" : "textSecondary"}
+                      themeColor={selected ? "accentText" : "textSecondary"}
                       style={styles.priceUnitLabel}
                     >
                       {unit === "kg" ? "kg" : "quintal"}

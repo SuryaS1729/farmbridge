@@ -205,7 +205,7 @@ export default function MyQuotesScreen() {
             {quotes.map((quote) => {
               const accepted = quote.status === "accepted" && quote.dealId !== null;
               const statusColor = quote.status === "accepted"
-                ? theme.ink
+                ? theme.accentText
                 : quote.status === "rejected"
                   ? "#9A4237"
                   : theme.textSecondary;

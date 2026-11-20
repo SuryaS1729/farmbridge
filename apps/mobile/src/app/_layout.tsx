@@ -6,7 +6,6 @@ import { useFonts } from 'expo-font';
 import { Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { PostHogProvider } from 'posthog-react-native';
 import { posthog } from '@/lib/posthog';
 import { profileQuery } from '@/lib/queries';
@@ -14,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Space } from '@/constants/theme';
+// Keep the native splash (app background colour) up until the first real screen is known.
 SplashScreen.preventAutoHideAsync();
 
 type OnboardingStatus = 'loading' | 'needed' | 'done' | 'error';
@@ -75,11 +75,19 @@ function AppRoot() {
         ? 'error' // failed, or offline: shows "Check your connection"; resumes by itself on reconnect
         : 'loading';
 
+  // Hide the splash only once we know which screen to show (sign-in, onboarding,
+  // Home or the connection error), so the farmer never sees a spinner or a wrong
+  // screen flash past on launch.
+  const ready = !isPending && onboardingStatus !== 'loading';
+  useEffect(() => {
+    if (ready) void SplashScreen.hideAsync();
+  }, [ready]);
+
   if (isPending || onboardingStatus === 'loading') {
     return (
-      <View style={styles.loading}>
+      <ThemedView style={styles.loading}>
         <ActivityIndicator/>
-      </View>
+      </ThemedView>
     )
   }
 
@@ -117,7 +125,6 @@ function AppRoot() {
           <Stack.Screen name="(farmer)" />
         </Stack.Protected>
       </Stack>
-      <AnimatedSplashOverlay />
     </>
   )
 
