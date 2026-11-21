@@ -25,7 +25,7 @@ export default function EditFarmDetailsScreen() {
   const phoneNumber = (session?.user as { phoneNumber?: string | null } | undefined)
     ?.phoneNumber;
 
-  // Usually already cached from Settings, so the form opens filled in.
+  // Usually already cached from Profile, so the form opens filled in.
   const profileResult = useQuery(profileQuery);
   const profile = profileResult.data?.profile ?? null;
   const { loading, error } = loadState(profileResult);
@@ -52,7 +52,7 @@ export default function EditFarmDetailsScreen() {
               onPress={() => router.back()}
               style={styles.backButton}
             >
-              <ThemedText type="smallBold">← Settings</ThemedText>
+              <ThemedText type="smallBold">← Profile</ThemedText>
             </Pressable>
             <ThemedText type="label" themeColor="textSecondary">
               FARM DETAILS
@@ -60,7 +60,7 @@ export default function EditFarmDetailsScreen() {
           </View>
 
           <View style={styles.intro}>
-            <ThemedText type="title">Edit farm details</ThemedText>
+            <ThemedText type="title">Edit profile</ThemedText>
             <ThemedText themeColor="textSecondary">
               Keep your name exactly as it appears on your Aadhaar card.
             </ThemedText>

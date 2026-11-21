@@ -7,6 +7,9 @@ export default function FarmerLayout() {
       <Stack.Screen name="quote" />
       <Stack.Screen name="my-quotes" />
       <Stack.Screen name="farm-details" />
+      <Stack.Screen name="profile" />
+      <Stack.Screen name="addresses" />
+      <Stack.Screen name="payment-methods" />
     </Stack>
   );
 }

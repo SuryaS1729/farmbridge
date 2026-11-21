@@ -340,12 +340,12 @@ export default function MyQuotesScreen() {
                             ) : (
                               <>
                                 <ThemedText type="small" themeColor="textSecondary">
-                                  You have no saved addresses. Add one in Settings, then come back here.
+                                  You have no saved addresses. Add one in Addresses, then come back here.
                                 </ThemedText>
                                 <Button
-                                  label="Open Settings"
+                                  label="Open addresses"
                                   variant="outline"
-                                  onPress={() => router.push("/settings")}
+                                  onPress={() => router.push("/addresses")}
                                 />
                               </>
                             )

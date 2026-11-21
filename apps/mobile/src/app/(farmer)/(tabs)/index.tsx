@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Icon } from "@/components/ui/icon";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Space } from "@/constants/theme";
@@ -57,9 +58,19 @@ export default function FarmerHomeScreen() {
           <ThemedText type="smallBold" style={styles.wordmark}>
             FARMBRIDGE
           </ThemedText>
-          <ThemedText type="label" themeColor="textSecondary">
-            COCOA · FARMER APP
-          </ThemedText>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open profile"
+            hitSlop={8}
+            onPress={() => router.push("../profile")}
+            style={({ pressed }) => [
+              styles.profileButton,
+              { backgroundColor: theme.accent },
+              pressed && styles.pressed,
+            ]}
+          >
+            <Icon name="person" size={22} color={theme.accentText} />
+          </Pressable>
         </View>
 
         <View style={styles.intro}>
@@ -117,9 +128,12 @@ export default function FarmerHomeScreen() {
                 {priceUnit === "kg"
                   ? formatPricePerKg(price.basePricePerKg)
                   : price.basePricePerQuintal}
+                <ThemedText type="figure" themeColor="textSecondary">
+                  /{priceUnit === "kg" ? "kg" : "quintal"}
+                </ThemedText>
               </ThemedText>
               <ThemedText themeColor="textSecondary">
-                per {priceUnit === "kg" ? "kilogram" : "quintal"} · {formatDateForIndia(price.businessDate)}
+                {formatDateForIndia(price.businessDate)}
               </ThemedText>
             </>
           ) : (
@@ -164,6 +178,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  profileButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  pressed: {
+    opacity: 0.7,
   },
   wordmark: {
     letterSpacing: 2,
