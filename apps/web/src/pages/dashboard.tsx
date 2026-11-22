@@ -1,4 +1,4 @@
-import { RiArrowDownSLine } from '@remixicon/react'
+import { CaretDownIcon } from '@phosphor-icons/react'
 import { keepPreviousData, queryOptions, useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import { useState } from 'react'
 import {
@@ -11,6 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { DatePicker } from '@/components/date-picker'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -250,7 +251,7 @@ function buildOfferParams(
     if (!value.trim()) continue
     if (key === 'readyFrom' || key === 'readyTo') {
       const isoDate = indianDateToIso(value.trim())
-      if (!isoDate) return { error: 'Enter filter dates in DD-MM-YYYY format.' }
+      if (!isoDate) return { error: 'Pick valid filter dates.' }
       params[key] = isoDate
     } else {
       params[key] = value.trim()
@@ -379,7 +380,7 @@ export function DashboardPage() {
     const enteredDate = pickupInputs[deal.id] ?? (deal.pickupScheduledOn ? formatDateForIndia(deal.pickupScheduledOn) : '')
     const pickupScheduledOn = indianDateToIso(enteredDate.trim())
     if (!pickupScheduledOn) {
-      setDealError('Enter the pickup date in DD-MM-YYYY format.')
+      setDealError('Pick the pickup date.')
       return
     }
     setDealError(null)
@@ -410,7 +411,7 @@ export function DashboardPage() {
   async function recordCollection(deal: AdminDeal) {
     const collectedOn = indianDateToIso(collectionForm.collectedOn.trim())
     if (!collectedOn) {
-      setDealError('Enter the collection date in DD-MM-YYYY format.')
+      setDealError('Pick the collection date.')
       return
     }
     const quantity = collectionForm.quantity.trim()
@@ -676,7 +677,7 @@ export function DashboardPage() {
                     <Badge variant="secondary" className="ml-2">{activeFilterCount} active</Badge>
                   ) : null}
                 </span>
-                <RiArrowDownSLine className="size-4 transition-transform in-data-[panel-open]:rotate-180" aria-hidden />
+                <CaretDownIcon className="size-4 transition-transform in-data-[panel-open]:rotate-180" aria-hidden />
               </CollapsibleTrigger>
               <CollapsibleContent>
                 <form className="grid gap-4 border-t p-3" onSubmit={applyOfferFilters}>
@@ -686,16 +687,23 @@ export function DashboardPage() {
                         <Label htmlFor={`filter-${field.key}`} className="text-muted-foreground">
                           {field.label}
                         </Label>
-                        <Input
-                          id={`filter-${field.key}`}
-                          inputMode={field.date ? 'numeric' : 'decimal'}
-                          maxLength={field.date ? 10 : undefined}
-                          placeholder={field.date ? 'DD-MM-YYYY' : undefined}
-                          value={offerFilters[field.key]}
-                          onChange={(event) =>
-                            setOfferFilters((current) => ({ ...current, [field.key]: event.target.value }))
-                          }
-                        />
+                        {field.date ? (
+                          <DatePicker
+                            id={`filter-${field.key}`}
+                            placeholder="Any date"
+                            value={offerFilters[field.key]}
+                            onChange={(value) => setOfferFilters((current) => ({ ...current, [field.key]: value }))}
+                          />
+                        ) : (
+                          <Input
+                            id={`filter-${field.key}`}
+                            inputMode="decimal"
+                            value={offerFilters[field.key]}
+                            onChange={(event) =>
+                              setOfferFilters((current) => ({ ...current, [field.key]: event.target.value }))
+                            }
+                          />
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1049,16 +1057,12 @@ export function DashboardPage() {
                     <strong>Pickup location:</strong> {deal.pickupLocation}
                   </p>
                   <div className="grid gap-2">
-                    <Label htmlFor="pickup-scheduled-on">
-                      Pickup date <span className="text-muted-foreground">(DD-MM-YYYY)</span>
-                    </Label>
-                    <Input
+                    <Label htmlFor="pickup-scheduled-on">Pickup date</Label>
+                    <DatePicker
                       id="pickup-scheduled-on"
-                      inputMode="numeric"
-                      maxLength={10}
-                      placeholder="DD-MM-YYYY"
+                      placeholder="Pick the pickup date"
                       value={pickupInputs[deal.id] ?? (deal.pickupScheduledOn ? formatDateForIndia(deal.pickupScheduledOn) : '')}
-                      onChange={(event) => setPickupInputs((current) => ({ ...current, [deal.id]: event.target.value }))}
+                      onChange={(value) => setPickupInputs((current) => ({ ...current, [deal.id]: value }))}
                     />
                   </div>
                   {dealError ? <p className="text-xs text-destructive" role="alert">{dealError}</p> : null}
@@ -1101,16 +1105,13 @@ export function DashboardPage() {
                     <strong>Accepted quote quantity:</strong> {deal.quantityQuintals} quintals
                   </p>
                   <div className="grid gap-2">
-                    <Label htmlFor="collected-on">
-                      Collection date <span className="text-muted-foreground">(DD-MM-YYYY)</span>
-                    </Label>
-                    <Input
+                    <Label htmlFor="collected-on">Collection date</Label>
+                    <DatePicker
                       id="collected-on"
-                      inputMode="numeric"
-                      maxLength={10}
-                      placeholder="DD-MM-YYYY"
+                      placeholder="Pick the collection date"
+                      disableFuture
                       value={collectionForm.collectedOn}
-                      onChange={(event) => setCollectionForm((current) => ({ ...current, collectedOn: event.target.value }))}
+                      onChange={(collectedOn) => setCollectionForm((current) => ({ ...current, collectedOn }))}
                     />
                   </div>
                   <div className="grid gap-2">

@@ -1,4 +1,4 @@
-import { RiSearchLine } from '@remixicon/react'
+import { MagnifyingGlassIcon } from '@phosphor-icons/react'
 import { Link } from '@tanstack/react-router'
 import { queryOptions, useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
@@ -153,7 +153,7 @@ export function FarmersPage() {
         <CardContent className="grid gap-4">
           <InputGroup className="max-w-md">
             <InputGroupAddon>
-              <RiSearchLine aria-hidden />
+              <MagnifyingGlassIcon aria-hidden />
             </InputGroupAddon>
             <InputGroupInput
               type="search"

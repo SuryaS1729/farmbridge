@@ -1,4 +1,4 @@
-import { RiLogoutBoxRLine } from '@remixicon/react'
+import { SignOutIcon } from '@phosphor-icons/react'
 import { Link, Outlet } from '@tanstack/react-router'
 
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -36,7 +36,7 @@ export function AdminLayout() {
           <Badge variant="outline" className="hidden sm:inline-flex">Administrator</Badge>
           <ThemeToggle />
           <Button variant="ghost" size="sm" onClick={() => void signOut()} disabled={signingOut}>
-            <RiLogoutBoxRLine data-icon="inline-start" aria-hidden />
+            <SignOutIcon data-icon="inline-start" aria-hidden />
             Sign out
           </Button>
         </div>

@@ -1,4 +1,4 @@
-import { RiArrowLeftLine } from '@remixicon/react'
+import { ArrowLeftIcon } from '@phosphor-icons/react'
 import { Link, useParams } from '@tanstack/react-router'
 import { queryOptions, useQuery } from '@tanstack/react-query'
 
@@ -157,7 +157,7 @@ export function FarmerDetailPage() {
         to="/farmers"
         className="mb-4 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
       >
-        <RiArrowLeftLine className="size-3.5" aria-hidden />
+        <ArrowLeftIcon className="size-3.5" aria-hidden />
         All farmers
       </Link>
 
