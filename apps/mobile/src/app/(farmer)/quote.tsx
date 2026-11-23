@@ -923,11 +923,23 @@ export default function QuoteScreen() {
           {inForm && step !== REVIEW ? (
             <View style={styles.actions}>
               <FormError message={error} />
-              <Button
-                label={returnToReview ? "Back to review" : revising || step === 2 ? "Review  →" : "Next  →"}
-                onPress={continueFromStep}
-                disabled={step === 2 && (addressesLoading || Boolean(addressesError))}
-              />
+              <View style={styles.actionRow}>
+                {/* Only between steps of a new offer; after a Change the main button already returns to the review. */}
+                {previousStep !== null && !returnToReview ? (
+                  <Button
+                    label="←  Back"
+                    variant="outline"
+                    style={styles.backAction}
+                    onPress={() => showStep(previousStep)}
+                  />
+                ) : null}
+                <Button
+                  label={returnToReview ? "Back to review" : revising || step === 2 ? "Review  →" : "Next  →"}
+                  style={styles.nextAction}
+                  onPress={continueFromStep}
+                  disabled={step === 2 && (addressesLoading || Boolean(addressesError))}
+                />
+              </View>
             </View>
           ) : null}
         </ScrollView>
@@ -980,4 +992,7 @@ const styles = StyleSheet.create({
   totalBox: { gap: Space.one, borderRadius: Radius.control, padding: Space.three },
   notice: { gap: Space.one, borderLeftWidth: 3, paddingLeft: Space.three },
   actions: { gap: Space.three },
+  actionRow: { flexDirection: "row", gap: Space.three },
+  backAction: { flex: 1 },
+  nextAction: { flex: 2 },
 });
