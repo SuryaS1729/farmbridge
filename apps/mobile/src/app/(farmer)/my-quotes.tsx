@@ -14,6 +14,7 @@ import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus";
 import { useTheme } from "@/hooks/use-theme";
 import {
   formatDateForIndia,
+  isOpenQuote,
   savePickupLocation as saveDealPickupLocation,
   type FarmerOffer,
 } from "@/lib/farmbridge-api";
@@ -241,13 +242,20 @@ export default function MyQuotesScreen() {
 
                   {quote.status === "pending" ? (
                     <ThemedText type="small" themeColor="textSecondary">
-                      The admin team is reviewing your quote.
+                      The buying team is reviewing your quote. You can change it until they decide. It expires at the end of today.
                     </ThemedText>
                   ) : null}
                   {quote.status === "invalid_needs_revision" ? (
                     <ThemedText type="small" themeColor="textSecondary">
-                      The published base price changed. This quote needs revision before it can be accepted.
+                      Today&apos;s price went up above your offer. Raise your offer price so the buying team can accept it. It expires at the end of today.
                     </ThemedText>
+                  ) : null}
+                  {isOpenQuote(quote) ? (
+                    <Button
+                      label={quote.status === "invalid_needs_revision" ? "Revise my price  →" : "Change my quote"}
+                      variant={quote.status === "invalid_needs_revision" ? undefined : "outline"}
+                      onPress={() => router.push(`./quote?offerId=${quote.id}`)}
+                    />
                   ) : null}
                   {quote.status === "rejected" && quote.rejectionReason ? (
                     <View style={[styles.reason, { borderColor: theme.border }]}>

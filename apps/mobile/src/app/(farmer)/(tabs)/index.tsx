@@ -19,10 +19,11 @@ import { Space } from "@/constants/theme";
 import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus";
 import { useTheme } from "@/hooks/use-theme";
 import {
+  findOpenQuote,
   formatDateForIndia,
   formatPricePerKg,
 } from "@/lib/farmbridge-api";
-import { loadState, profileQuery, queryKeys, todayPriceQuery } from "@/lib/queries";
+import { loadState, profileQuery, queryKeys, quotesQuery, todayPriceQuery } from "@/lib/queries";
 
 export default function FarmerHomeScreen() {
   const insets = useSafeAreaInsets();
@@ -32,8 +33,12 @@ export default function FarmerHomeScreen() {
   // Returning to the app refetches via the global focusManager; returning to this
   // tab from another screen refetches here. Both only fire once the price is 30s old.
   const priceQuery = useQuery(todayPriceQuery);
-  useRefreshOnFocus(queryKeys.todayPrice);
+  // Quotes too: an open quote replaces "Make a cocoa offer", since only one is allowed at a time.
+  const quotesResult = useQuery(quotesQuery);
+  useRefreshOnFocus(queryKeys.todayPrice, queryKeys.quotes);
   const price = priceQuery.data?.price ?? null;
+  const openQuote = findOpenQuote(quotesResult.data?.offers);
+  const needsRevision = openQuote?.status === "invalid_needs_revision";
 
   // Already cached by the onboarding check in _layout, so this costs no extra request.
   const profile = useQuery(profileQuery);
@@ -149,17 +154,47 @@ export default function FarmerHomeScreen() {
               loading={priceQuery.isFetching}
             />
           ) : null}
-          <Button
-            label="Make a cocoa offer  →"
-            onPress={() => router.push("../quote")}
-            disabled={!price || loadingPrice}
-          />
+          {openQuote ? null : (
+            <Button
+              label="Make a cocoa offer  →"
+              onPress={() => router.push("../quote")}
+              disabled={!price || loadingPrice}
+            />
+          )}
           <Button
             label="View my quotes"
             variant="outline"
             onPress={() => router.push("../my-quotes")}
           />
         </Card>
+
+        {openQuote ? (
+          <Card style={styles.priceCard}>
+            <View style={styles.priceHeading}>
+              <ThemedText type="label" themeColor="textSecondary">
+                YOUR OPEN QUOTE
+              </ThemedText>
+              <ThemedText type="label" themeColor={needsRevision ? "text" : "textSecondary"}>
+                {needsRevision ? "NEEDS A NEW PRICE" : "WITH THE BUYING TEAM"}
+              </ThemedText>
+            </View>
+            <ThemedText type="figure">
+              ₹{formatPricePerKg(openQuote.offeredPricePerKg)}/kg · {openQuote.quantityQuintals} quintals
+            </ThemedText>
+            <ThemedText themeColor="textSecondary">
+              {needsRevision
+                ? "Today's price went up above your offer. Raise your offer price so the buying team can accept it."
+                : "The buying team is reviewing it. You can change any detail until they decide."}{" "}
+              It expires at the end of today.
+            </ThemedText>
+            <Button
+              label={needsRevision ? "Revise my price  →" : "Change my quote"}
+              variant={needsRevision ? undefined : "outline"}
+              onPress={() => router.push(`../quote?offerId=${openQuote.id}`)}
+              disabled={!price || loadingPrice}
+            />
+          </Card>
+        ) : null}
       </ScrollView>
     </ThemedView>
   );

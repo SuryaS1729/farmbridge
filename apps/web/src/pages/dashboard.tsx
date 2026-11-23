@@ -100,6 +100,7 @@ type AdminOffer = {
   status: 'pending' | 'invalid_needs_revision'
   submittedAt: string
   expiresAt: string
+  updatedAt: string
 }
 
 type AdminDeal = {
@@ -355,8 +356,15 @@ export function DashboardPage() {
   })
 
   const acceptMutation = useMutation({
-    mutationFn: (offerId: string) => apiRequest(`/api/admin/offers/${offerId}/accept`, { method: 'POST' }),
+    // updatedAt as shown on screen: the API refuses if the farmer revised the quote since.
+    mutationFn: (offer: AdminOffer) =>
+      apiRequest(`/api/admin/offers/${offer.id}/accept`, {
+        method: 'POST',
+        body: { expectedUpdatedAt: offer.updatedAt },
+      }),
     onSuccess: () => invalidate(queryKeys.offers, queryKeys.deals, queryKeys.farmers),
+    // A refused accept usually means the quote changed or expired: reload so the admin sees the latest.
+    onError: () => invalidate(queryKeys.offers),
   })
 
   const rejectMutation = useMutation({
@@ -437,11 +445,18 @@ export function DashboardPage() {
   async function acceptOffer(offer: AdminOffer) {
     setDecisionError(null)
     try {
-      await acceptMutation.mutateAsync(offer.id)
+      await acceptMutation.mutateAsync(offer)
       setAcceptingOffer(null)
       setNotice('Quote accepted and deal created with the submitted terms.')
     } catch (requestError) {
       setDecisionError(getErrorMessage(requestError))
+      // The offers list has refetched by now (onError waits for it). Show the latest terms in
+      // the dialog, so a quote the farmer just revised can be reviewed and accepted as it is now.
+      const fresh = queryClient
+        .getQueriesData<{ offers: AdminOffer[] }>({ queryKey: queryKeys.offers })
+        .flatMap(([, data]) => data?.offers ?? [])
+        .find((candidate) => candidate.id === offer.id)
+      if (fresh) setAcceptingOffer(fresh)
     }
   }
 

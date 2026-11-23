@@ -162,6 +162,8 @@ routes.get("/api/admin/offers", async (c) => {
         status: offers.status,
         submittedAt: offers.submittedAt,
         expiresAt: offers.expiresAt,
+        // Sent back with Accept, so a quote the farmer revised in the meantime is refused.
+        updatedAt: offers.updatedAt,
       })
       .from(offers)
       .innerJoin(farmerProfile, eq(offers.farmerId, farmerProfile.id))
@@ -186,9 +188,27 @@ const rejectOfferSchema = z.object({
   reason: z.string().trim().min(1).max(500),
 });
 
+// The admin sends the quote's updatedAt as they saw it. Farmers can revise an open
+// quote, so a mismatch means the details changed after the admin looked, and
+// accepting would lock in terms they never saw.
+const acceptOfferSchema = z.object({
+  expectedUpdatedAt: z.string().datetime({ offset: true }),
+});
+
 routes.post("/api/admin/offers/:offerId/accept", async (c) => {
   const offerId = z.string().uuid().safeParse(c.req.param("offerId"));
   if (!offerId.success) return c.json({ error: "Invalid quote ID." }, 400);
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Request body must be valid JSON." }, 400);
+  }
+  const parsed = acceptOfferSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Reload the quotes and try again." }, 400);
+  }
+  const expectedUpdatedAt = new Date(parsed.data.expectedUpdatedAt).getTime();
 
   return withVerifiedActor(c, ["admin"], async (db, actor) => {
     const result = await db.transaction(async (tx) => {
@@ -209,6 +229,10 @@ routes.post("/api/admin/offers/:offerId/accept", async (c) => {
           actorType: "system",
         });
         return { kind: "expired" as const };
+      }
+      // Compared in milliseconds: that is the precision the admin page received.
+      if (offer.updatedAt.getTime() !== expectedUpdatedAt) {
+        return { kind: "changed" as const };
       }
 
       const [deal] = await tx
@@ -243,6 +267,15 @@ routes.post("/api/admin/offers/:offerId/accept", async (c) => {
       return c.json({ error: "Only pending quotes can be accepted." }, 409);
     }
     if (result.kind === "expired") return c.json({ error: "This quote has expired." }, 410);
+    if (result.kind === "changed") {
+      return c.json(
+        {
+          error: "The farmer changed this quote after you opened it. Review the new details before accepting.",
+          code: "offer_changed",
+        },
+        409,
+      );
+    }
     return c.json({ deal: result.deal }, 201);
   });
 });

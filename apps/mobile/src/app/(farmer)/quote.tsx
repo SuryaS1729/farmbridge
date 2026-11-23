@@ -8,7 +8,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -25,9 +25,14 @@ import { ThemedView } from "@/components/themed-view";
 import { Fonts, Radius, Space } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import {
+  findOpenQuote,
+  formatDateForIndia,
   formatPricePerKg,
+  isOpenQuote,
+  reviseQuote,
   submitQuote,
   type AddressInput,
+  type FarmerOffer,
   type QuoteInput,
 } from "@/lib/farmbridge-api";
 import { posthog, posthogLogger } from "@/lib/posthog";
@@ -36,6 +41,7 @@ import {
   addressesQuery,
   loadState,
   queryKeys,
+  quotesQuery,
   todayPriceQuery,
 } from "@/lib/queries";
 
@@ -56,6 +62,24 @@ const emptyFields: QuoteFields = {
 };
 
 type QuantityUnit = "kg" | "quintal";
+
+/**
+ * The saved quote as form values. Quantity is stored in kg, so it is shown in quintals
+ * when that is exact to two decimals (as the form accepts), and in kg otherwise.
+ */
+function fieldsFromQuote(quote: FarmerOffer): { fields: QuoteFields; unit: QuantityUnit } {
+  const inQuintals = /^\d{1,7}(?:\.\d{1,2})?$/.test(quote.quantityQuintals);
+  return {
+    unit: inQuintals ? "quintal" : "kg",
+    fields: {
+      offeredPricePerKg: formatPricePerKg(quote.offeredPricePerKg),
+      quantity: inQuintals ? quote.quantityQuintals : formatPricePerKg(quote.quantityKg),
+      moisturePercent: formatPricePerKg(quote.moisturePercent),
+      beanCountPer100g: formatPricePerKg(quote.beanCountPer100g),
+      readyOn: formatDateForIndia(quote.readyOn),
+    },
+  };
+}
 
 function indianDateToIso(value: string) {
   const match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(value);
@@ -121,6 +145,7 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
 
 export default function QuoteScreen() {
   const insets = useSafeAreaInsets();
+  const theme = useTheme();
   const queryClient = useQueryClient();
   const [fields, setFields] = useState<QuoteFields>(emptyFields);
   const [quantityUnit, setQuantityUnit] = useState<QuantityUnit>("quintal");
@@ -130,21 +155,46 @@ export default function QuoteScreen() {
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [newAddress, setNewAddress] = useState<AddressInput>(emptyAddress);
 
+  // With ?offerId= this screen revises that open quote instead of making a new one.
+  const { offerId } = useLocalSearchParams<{ offerId?: string }>();
+  const revisingId = typeof offerId === "string" && offerId ? offerId : null;
+  const quotesResult = useQuery(quotesQuery);
+  const revisingQuote = revisingId
+    ? quotesResult.data?.offers.find((quote) => quote.id === revisingId) ?? null
+    : null;
+  // Only one open quote is allowed at a time, so a new offer is blocked while one exists.
+  const openQuote = revisingId ? null : findOpenQuote(quotesResult.data?.offers);
+  // The quote being revised was decided or expired since the farmer opened it.
+  const revisingClosed =
+    Boolean(revisingId) && quotesResult.data !== undefined && !(revisingQuote && isOpenQuote(revisingQuote));
+  const waitingForQuote = Boolean(revisingId) && quotesResult.isPending;
+
+  // Fill the form from the saved quote once, the first time it arrives.
+  const [prefilled, setPrefilled] = useState(false);
+  if (revisingQuote && !prefilled) {
+    setPrefilled(true);
+    const initial = fieldsFromQuote(revisingQuote);
+    setFields(initial.fields);
+    setQuantityUnit(initial.unit);
+  }
+
   const submitMutation = useMutation({
-    mutationFn: submitQuote,
+    mutationFn: (input: QuoteInput) => (revisingId ? reviseQuote(revisingId, input) : submitQuote(input)),
     // Explicit even though it's the app default: a quote must never be queued offline
     // and sent later, when the farmer has moved on or the day's price has changed.
     networkMode: "always",
     onSuccess: (_result, input) => {
-      // My Quotes must show the new quote; a typed-in address is saved to the farmer's list too.
+      // My Quotes and Home must show the new or changed quote; a typed-in address is saved to the farmer's list too.
       void queryClient.invalidateQueries({ queryKey: queryKeys.quotes });
       if (input.newPickupAddress) void queryClient.invalidateQueries({ queryKey: queryKeys.addresses });
     },
     onError: () => {
       // The usual server rejections are "price not published yet" and "offer below today's
       // price", and both mean the price on screen may be out of date. Refetch it so the
-      // farmer sees the current price next to the error.
+      // farmer sees the current price next to the error. A revise can also fail because the
+      // quote was just decided or expired, so refresh the quotes too.
       void queryClient.invalidateQueries({ queryKey: queryKeys.todayPrice });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.quotes });
     },
   });
   const submitting = submitMutation.isPending;
@@ -164,10 +214,15 @@ export default function QuoteScreen() {
     "Could not load your saved addresses.",
   );
 
-  // Pre-select the default address once, the first time addresses arrive;
-  // later refetches must not undo the farmer's own choice.
-  if (selectedAddressId === null && addressQuery.data) {
-    const preferred = addressQuery.data.addresses.find((a) => a.isDefault) ?? addressQuery.data.addresses[0];
+  // Pre-select an address once, the first time addresses arrive (and, when revising, the
+  // quote too); later refetches must not undo the farmer's own choice. A revised quote keeps
+  // its current address when it is still saved, otherwise the default is used.
+  if (selectedAddressId === null && addressQuery.data && (!revisingId || revisingQuote)) {
+    const saved = addressQuery.data.addresses;
+    const preferred =
+      saved.find((a) => revisingQuote !== null && a.address === revisingQuote.offerPickupLocation) ??
+      saved.find((a) => a.isDefault) ??
+      saved[0];
     setSelectedAddressId(preferred ? preferred.id : NEW_ADDRESS);
   }
 
@@ -227,7 +282,7 @@ export default function QuoteScreen() {
       return;
     }
 
-    posthog?.capture("quote_review_started", {
+    posthog?.capture(revisingId ? "quote_revision_review_started" : "quote_review_started", {
       offered_price_per_kg: Number(fields.offeredPricePerKg),
       quantity: Number(fields.quantity),
       quantity_unit: quantityUnit,
@@ -258,7 +313,7 @@ export default function QuoteScreen() {
 
     try {
       await submitMutation.mutateAsync(input);
-      posthog?.capture("quote_submitted", {
+      posthog?.capture(revisingId ? "quote_revised" : "quote_submitted", {
         offered_price_per_kg: Number(fields.offeredPricePerKg),
         quantity: Number(fields.quantity),
         quantity_unit: quantityUnit,
@@ -266,17 +321,22 @@ export default function QuoteScreen() {
         bean_count_per_100g: input.beanCountPer100g,
         pickup_address: usingNewAddress ? "new" : "saved",
       });
-      posthogLogger.info("quote submission completed", {
-        operation: "quote_submission",
+      posthogLogger.info(revisingId ? "quote revision completed" : "quote submission completed", {
+        operation: revisingId ? "quote_revision" : "quote_submission",
         quantity_unit: quantityUnit,
       });
       setSubmitted(true);
     } catch (submissionError) {
-      posthogLogger.error("quote submission failed", {
-        operation: "quote_submission",
+      posthogLogger.error(revisingId ? "quote revision failed" : "quote submission failed", {
+        operation: revisingId ? "quote_revision" : "quote_submission",
         error_type: "request_failed",
       });
-      setError(actionErrorMessage(submissionError, "Could not submit your quote. Please try again."));
+      setError(
+        actionErrorMessage(
+          submissionError,
+          revisingId ? "Could not save your changes. Please try again." : "Could not submit your quote. Please try again.",
+        ),
+      );
     }
   }
 
@@ -294,15 +354,21 @@ export default function QuoteScreen() {
       >
         <View style={styles.header}>
           <ThemedText type="label" themeColor="textSecondary">
-            SELL COCOA
+            {revisingId ? "SELL COCOA · CHANGE QUOTE" : "SELL COCOA"}
           </ThemedText>
           <ThemedText type="title">
-            {submitted ? "Quote submitted." : reviewing ? "Review your quote." : "Make an offer."}
+            {submitted
+              ? revisingId ? "Quote updated." : "Quote submitted."
+              : reviewing
+                ? revisingId ? "Review your changes." : "Review your quote."
+                : revisingId ? "Change your quote." : "Make an offer."}
           </ThemedText>
           <ThemedText themeColor="textSecondary">
             {submitted
               ? "The buying team will review the details you submitted."
-              : "Submitting this quote means you want to sell this cocoa."}
+              : revisingId
+                ? "You can change any detail until the buying team decides. The quote still expires at the end of today."
+                : "Submitting this quote means you want to sell this cocoa. It stays open until the end of today."}
           </ThemedText>
         </View>
 
@@ -343,10 +409,45 @@ export default function QuoteScreen() {
               YOUR QUOTE IS WITH THE BUYING TEAM
             </ThemedText>
             <ThemedText>
-              You can return to Home. The administrator will review the submitted price, quantity, quality details, readiness date, and pickup address.
+              {revisingId
+                ? "Your changes are saved. The buying team will see the new details when they review your quote."
+                : "You can return to Home. The buying team will review your price, quantity, quality details, ready date, and pickup address."}
             </ThemedText>
             <Button label="View my quotes" variant="outline" onPress={() => router.replace("./my-quotes")} />
             <Button label="Back to Home" onPress={() => router.replace("/(farmer)/(tabs)")} />
+          </Card>
+        ) : waitingForQuote ? (
+          <Card style={styles.formCard}>
+            <ActivityIndicator />
+            <ThemedText themeColor="textSecondary">Loading your quote…</ThemedText>
+          </Card>
+        ) : revisingClosed ? (
+          <Card style={styles.formCard}>
+            <ThemedText type="label" themeColor="textSecondary">
+              THIS QUOTE CAN NO LONGER BE CHANGED
+            </ThemedText>
+            <ThemedText>
+              The buying team has already decided on it, or it expired at the end of the day. Check My quotes for its status.
+            </ThemedText>
+            <Button label="View my quotes" onPress={() => router.replace("./my-quotes")} />
+          </Card>
+        ) : openQuote ? (
+          <Card style={styles.formCard}>
+            <ThemedText type="label" themeColor="textSecondary">
+              YOU ALREADY HAVE AN OPEN QUOTE
+            </ThemedText>
+            <ThemedText>
+              You can have one open quote at a time. Change that quote instead, or wait for the buying team to decide.
+            </ThemedText>
+            <Button
+              label="Change my open quote  →"
+              onPress={() => {
+                // Re-pick the address from the open quote once its details load.
+                setSelectedAddressId(null);
+                setError(null);
+                router.setParams({ offerId: openQuote.id });
+              }}
+            />
           </Card>
         ) : reviewing ? (
           <Card style={styles.formCard}>
@@ -372,7 +473,7 @@ export default function QuoteScreen() {
             </ThemedText>
             <Button label="Edit details" variant="outline" onPress={() => setReviewing(false)} />
             <Button
-              label="Submit quote"
+              label={revisingId ? "Save changes" : "Submit quote"}
               onPress={confirmSubmission}
               loading={submitting}
               disabled={!price}
@@ -380,6 +481,14 @@ export default function QuoteScreen() {
           </Card>
         ) : price ? (
           <Card style={styles.formCard}>
+            {revisingQuote?.status === "invalid_needs_revision" ? (
+              <View style={[styles.notice, { borderColor: theme.accent }]}>
+                <ThemedText type="smallBold">Today&apos;s price went up</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {`Your offer of ₹${formatPricePerKg(revisingQuote.offeredPricePerKg)}/kg is now below today's base price of ₹${formatPricePerKg(price.basePricePerKg)}/kg. Raise your offer to at least ₹${formatPricePerKg(price.basePricePerKg)} to keep this quote open.`}
+                </ThemedText>
+              </View>
+            ) : null}
             <InputField
               label="OFFER PRICE PER KG (₹)"
               value={fields.offeredPricePerKg}
@@ -562,4 +671,5 @@ const styles = StyleSheet.create({
     paddingVertical: Space.one,
   },
   reviewValue: { flexShrink: 1, textAlign: "right" },
+  notice: { gap: Space.one, borderLeftWidth: 3, paddingLeft: Space.three },
 });

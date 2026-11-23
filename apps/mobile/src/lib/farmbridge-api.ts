@@ -109,6 +109,27 @@ export function submitQuote(input: QuoteInput) {
   });
 }
 
+/** Changes an open quote. It goes back to "pending" and keeps its end-of-day expiry. */
+export function reviseQuote(offerId: string, input: QuoteInput) {
+  return request<{ offer: SubmittedOffer }>(`/api/offers/${offerId}/revise`, {
+    method: "POST",
+    body: input,
+  });
+}
+
+/** Still waiting on the buying team and not past its end-of-day expiry, so it can be revised. */
+export function isOpenQuote(quote: FarmerOffer) {
+  return (
+    (quote.status === "pending" || quote.status === "invalid_needs_revision") &&
+    new Date(quote.expiresAt).getTime() > Date.now()
+  );
+}
+
+/** A farmer can have only one open quote at a time (the API enforces it). */
+export function findOpenQuote(quotes: FarmerOffer[] | undefined) {
+  return quotes?.find(isOpenQuote) ?? null;
+}
+
 export function getMyQuotes() {
   return request<{ offers: FarmerOffer[] }>("/api/offers/mine", {
     method: "GET",
