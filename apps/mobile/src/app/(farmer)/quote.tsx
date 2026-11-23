@@ -36,7 +36,9 @@ import {
   findOpenQuote,
   formatDateForIndia,
   formatPricePerKg,
+  formatRupees,
   isOpenQuote,
+  offerPriceFromBase,
   reviseQuote,
   submitQuote,
   todayInIndia,
@@ -213,6 +215,20 @@ export default function QuoteScreen() {
   // Opening this screen refetches anything older than 30s, so the price shown is current.
   const priceQuery = useQuery(todayPriceQuery);
   const price = priceQuery.data?.price ?? null;
+
+  // A new offer starts at today's base price: the lowest price that will be accepted,
+  // and a safe starting point the farmer can raise. Done once, so it never overwrites typing.
+  const [pricePrefilled, setPricePrefilled] = useState(false);
+  if (!revisingId && price && !pricePrefilled) {
+    setPricePrefilled(true);
+    if (fields.offeredPricePerKg === "") {
+      setFields((current) => ({ ...current, offeredPricePerKg: offerPriceFromBase(price.basePricePerKg) }));
+    }
+  }
+
+  // Price × quantity in kg, as a rough guide. The real amount depends on the weight at pickup.
+  const quantityKg = Number(fields.quantity) * (quantityUnit === "quintal" ? 100 : 1);
+  const estimatedTotal = Number(fields.offeredPricePerKg) * quantityKg;
   const { loading: loadingPrice, error: priceError } = loadState(
     priceQuery,
     "Could not load today's cocoa price.",
@@ -481,6 +497,15 @@ export default function QuoteScreen() {
               label="Quantity"
               value={`${fields.quantity} ${quantityUnit === "quintal" ? "quintals" : "kg"}`}
             />
+            <View style={[styles.totalBox, { backgroundColor: theme.accentSoft }]}>
+              <ThemedText type="label" themeColor="textSecondary">
+                ESTIMATED VALUE
+              </ThemedText>
+              <ThemedText type="figure">{formatRupees(estimatedTotal)}</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {`₹${fields.offeredPricePerKg}/kg × ${quantityKg.toLocaleString("en-IN")} kg. You are paid for the weight measured at pickup, so the final amount may differ.`}
+              </ThemedText>
+            </View>
             <ReviewRow label="Bean moisture" value={`${fields.moisturePercent}%`} />
             <ReviewRow label="Bean count" value={`${fields.beanCountPer100g} per 100 g`} />
             <ReviewRow label="Ready for pickup" value={formatDateForIndia(fields.readyOn)} />
@@ -525,9 +550,14 @@ export default function QuoteScreen() {
               fieldRef={fieldRef("offeredPricePerKg")}
               value={fields.offeredPricePerKg}
               onChangeText={(value) => setField("offeredPricePerKg", value)}
-              placeholder="e.g. 250.00"
+              placeholder={price ? offerPriceFromBase(price.basePricePerKg) : "e.g. 250"}
               keyboardType="decimal-pad"
             />
+            <ThemedText type="small" themeColor="textSecondary">
+              {revisingId
+                ? `Today's base price is ₹${formatPricePerKg(price.basePricePerKg)}/kg. Your offer must be at least this.`
+                : "Filled in with today's base price, the lowest price you can offer. You can offer more."}
+            </ThemedText>
             <View style={styles.field}>
               <ThemedText type="label" themeColor="textSecondary">
                 AVAILABLE QUANTITY
@@ -734,5 +764,6 @@ const styles = StyleSheet.create({
     paddingVertical: Space.one,
   },
   reviewValue: { flexShrink: 1, textAlign: "right" },
+  totalBox: { gap: Space.one, borderRadius: Radius.control, padding: Space.three },
   notice: { gap: Space.one, borderLeftWidth: 3, paddingLeft: Space.three },
 });

@@ -18,6 +18,25 @@ export function formatDateForIndia(value: string) {
   return match ? `${match[3]}-${match[2]}-${match[1]}` : value;
 }
 
+/**
+ * The base price as a starting offer. Base prices can have four decimals (a quintal
+ * price converted to kg), but offers take two, so round *up* to stay at or above base.
+ */
+export function offerPriceFromBase(basePricePerKg: string) {
+  const [whole, fraction = ""] = basePricePerKg.split(".");
+  const digits = fraction.padEnd(4, "0");
+  let paise = BigInt(whole) * 100n + BigInt(digits.slice(0, 2));
+  if (/[1-9]/.test(digits.slice(2))) paise += 1n;
+  const rupees = paise / 100n;
+  const rest = (paise % 100n).toString().padStart(2, "0").replace(/0+$/, "");
+  return rest ? `${rupees}.${rest}` : rupees.toString();
+}
+
+/** Whole rupees with Indian digit grouping, e.g. ₹1,23,456. */
+export function formatRupees(amount: number) {
+  return `₹${new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(Math.round(amount))}`;
+}
+
 /** Today's date in India as ISO `YYYY-MM-DD`, matching the API's business date. */
 export function todayInIndia(now = new Date()) {
   const parts: Record<string, string> = {};
