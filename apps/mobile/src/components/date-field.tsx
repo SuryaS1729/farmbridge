@@ -47,16 +47,11 @@ export function DateField({
   fieldRef?: (node: View | null) => void;
 }) {
   const theme = useTheme();
-  const scheme = useColorScheme();
   const [open, setOpen] = useState(false);
 
-  const minimum = minimumDate ? isoToLocalDate(minimumDate) : undefined;
-  // The picker needs a date to start from: the chosen one, else the earliest allowed, else today.
-  const pickerValue = value ? isoToLocalDate(value) : minimum ?? new Date();
-
-  function choose(date: Date) {
+  function choose(iso: string) {
     setOpen(false);
-    onChange(localDateToIso(date));
+    onChange(iso);
   }
 
   return (
@@ -87,37 +82,76 @@ export function DateField({
         <Icon name="calendar" size={20} color={theme.textSecondary} />
       </Pressable>
 
-      {open && Platform.OS === "android" ? (
-        // Opens as a dialog when mounted; unmounting on choose or cancel closes it.
-        <DateTimePicker
-          value={pickerValue}
-          mode="date"
-          presentation="dialog"
-          minimumDate={minimum}
-          accentColor={theme.accent}
-          positiveButton={{ label: "Choose" }}
-          negativeButton={{ label: "Cancel" }}
-          onValueChange={(_event, date) => choose(date)}
-          onDismiss={() => setOpen(false)}
-        />
-      ) : null}
-
-      {open && Platform.OS !== "android" ? (
-        // An inline calendar under the field; tapping a day picks it and closes the calendar.
-        <View style={[styles.calendar, { borderColor: theme.border, backgroundColor: theme.backgroundElement }]}>
-          <DateTimePicker
-            value={pickerValue}
-            mode="date"
-            display="inline"
-            minimumDate={minimum}
-            accentColor={theme.accent}
-            themeVariant={scheme === "dark" ? "dark" : "light"}
-            onValueChange={(_event, date) => choose(date)}
-          />
-        </View>
-      ) : null}
+      <DatePicker
+        open={open}
+        value={value}
+        minimumDate={minimumDate}
+        onChoose={choose}
+        onClose={() => setOpen(false)}
+      />
 
       <FieldError message={error} />
+    </View>
+  );
+}
+
+/**
+ * The phone's own date picker, shown while `open`: Android's Material dialog, or on iOS a
+ * calendar where this is placed. Picking a day calls onChoose (ISO `YYYY-MM-DD`); the parent
+ * closes it. Android's Cancel calls onClose.
+ */
+export function DatePicker({
+  open,
+  value,
+  minimumDate,
+  onChoose,
+  onClose,
+}: {
+  open: boolean;
+  /** ISO `YYYY-MM-DD`, or "" for none yet. */
+  value: string;
+  /** ISO `YYYY-MM-DD`; earlier days can't be picked. */
+  minimumDate?: string;
+  onChoose: (iso: string) => void;
+  onClose: () => void;
+}) {
+  const theme = useTheme();
+  const scheme = useColorScheme();
+  if (!open) return null;
+
+  const minimum = minimumDate ? isoToLocalDate(minimumDate) : undefined;
+  // The picker needs a date to start from: the chosen one, else the earliest allowed, else today.
+  const pickerValue = value ? isoToLocalDate(value) : minimum ?? new Date();
+
+  if (Platform.OS === "android") {
+    // Opens as a dialog when mounted; unmounting on choose or cancel closes it.
+    return (
+      <DateTimePicker
+        value={pickerValue}
+        mode="date"
+        presentation="dialog"
+        minimumDate={minimum}
+        accentColor={theme.accent}
+        positiveButton={{ label: "Choose" }}
+        negativeButton={{ label: "Cancel" }}
+        onValueChange={(_event, date) => onChoose(localDateToIso(date))}
+        onDismiss={onClose}
+      />
+    );
+  }
+
+  // An inline calendar; tapping a day picks it and the parent closes the calendar.
+  return (
+    <View style={[styles.calendar, { borderColor: theme.border, backgroundColor: theme.backgroundElement }]}>
+      <DateTimePicker
+        value={pickerValue}
+        mode="date"
+        display="inline"
+        minimumDate={minimum}
+        accentColor={theme.accent}
+        themeVariant={scheme === "dark" ? "dark" : "light"}
+        onValueChange={(_event, date) => onChoose(localDateToIso(date))}
+      />
     </View>
   );
 }

@@ -22,7 +22,7 @@ import {
   validateAddress,
 } from "@/components/address-fields";
 import { AddressPicker, NEW_ADDRESS } from "@/components/address-picker";
-import { DateField } from "@/components/date-field";
+import { DatePicker } from "@/components/date-field";
 import {
   FieldError,
   FormError,
@@ -258,8 +258,8 @@ export default function QuoteScreen() {
   const { fieldRef, scrollToFirst } = useScrollToField(scrollRef);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [newAddress, setNewAddress] = useState<AddressInput>(emptyAddress);
-  // "Another day" was tapped, so the calendar field shows even before a date is picked.
-  const [pickingOtherDate, setPickingOtherDate] = useState(false);
+  // "Another day" opens the phone's date picker straight away.
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
 
   // With ?offerId= this screen revises that open quote instead of making a new one.
   const { offerId } = useLocalSearchParams<{ offerId?: string }>();
@@ -386,11 +386,11 @@ export default function QuoteScreen() {
   const today = todayInIndia();
   const tomorrow = todayInIndia(new Date(Date.now() + 24 * 60 * 60 * 1000));
   const readyChoice: "today" | "tomorrow" | "other" | null =
-    fields.readyOn === today && !pickingOtherDate
+    fields.readyOn === today
       ? "today"
-      : fields.readyOn === tomorrow && !pickingOtherDate
+      : fields.readyOn === tomorrow
         ? "tomorrow"
-        : fields.readyOn || pickingOtherDate
+        : fields.readyOn
           ? "other"
           : null;
 
@@ -418,12 +418,11 @@ export default function QuoteScreen() {
 
   function chooseReadyDay(choice: "today" | "tomorrow" | "other") {
     if (choice === "other") {
-      setPickingOtherDate(true);
-      // Keep a date already picked from the calendar; today/tomorrow is cleared so one is chosen.
-      if (fields.readyOn === today || fields.readyOn === tomorrow) setField("readyOn", "");
+      // Tapping it again reopens the picker to change the day. Cancel keeps the earlier choice.
+      setDatePickerOpen(true);
       return;
     }
-    setPickingOtherDate(false);
+    setDatePickerOpen(false);
     setField("readyOn", choice === "today" ? today : tomorrow);
   }
 
@@ -438,6 +437,7 @@ export default function QuoteScreen() {
   /** Moves to a step, starting at its top rather than where the last one was scrolled. */
   function showStep(target: Step, fromReview = false) {
     setError(null);
+    setDatePickerOpen(false);
     setReturnToReview(fromReview);
     setStep(target);
     scrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -803,20 +803,25 @@ export default function QuoteScreen() {
                       options={[
                         { value: "today", label: "Today" },
                         { value: "tomorrow", label: "Tomorrow" },
-                        { value: "other", label: "Another day" },
+                        {
+                          value: "other",
+                          // Once picked, the button shows the day itself.
+                          label: readyChoice === "other" ? formatDateForIndia(fields.readyOn) : "Another day",
+                        },
                       ]}
                       value={readyChoice}
                       onChange={chooseReadyDay}
                     />
-                    {readyChoice === "other" ? (
-                      <DateField
-                        label="READY ON"
-                        value={fields.readyOn}
-                        onChange={(value) => setField("readyOn", value)}
-                        minimumDate={today}
-                        placeholder="Choose the day"
-                      />
-                    ) : null}
+                    <DatePicker
+                      open={datePickerOpen}
+                      value={readyChoice === "other" ? fields.readyOn : ""}
+                      minimumDate={today}
+                      onChoose={(value) => {
+                        setDatePickerOpen(false);
+                        setField("readyOn", value);
+                      }}
+                      onClose={() => setDatePickerOpen(false)}
+                    />
                     <FieldError message={fieldErrors.readyOn} />
                   </View>
                   <View ref={fieldRef("pickupAddress")} style={styles.field}>
