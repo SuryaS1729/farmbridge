@@ -275,6 +275,9 @@ export const todayPriceQueryOptions = queryOptions({
 export const dealsQueryOptions = queryOptions({
   queryKey: queryKeys.deals,
   queryFn: () => apiRequest<{ deals: AdminDeal[] }>('/api/admin/deals'),
+  // Farmers' actions change deals too; poll so the table stays current without a reload.
+  // TanStack pauses polling while the browser tab is hidden.
+  refetchInterval: 60_000,
 })
 
 export function offerQueueQueryOptions(status: OfferFilter, params: Record<string, string>) {
@@ -282,6 +285,9 @@ export function offerQueueQueryOptions(status: OfferFilter, params: Record<strin
     queryKey: queryKeys.offerQueue(status, params),
     queryFn: () =>
       apiRequest<OfferQueue>('/api/admin/offers?' + new URLSearchParams({ status, ...params }).toString()),
+    // Farmers submit quotes at any time; poll so new ones appear without a reload.
+    // TanStack pauses polling while the browser tab is hidden.
+    refetchInterval: 30_000,
   })
 }
 
