@@ -342,12 +342,24 @@ export default function OnboardingScreen() {
 
             <View style={styles.actions}>
               <FormError message={error} />
-              <Button
-                label={step === 2 ? "Start selling  →" : "Next  →"}
-                onPress={next}
-                loading={saving}
-                disabled={step === 1 && addressesLoading}
-              />
+              <View style={styles.actionRow}>
+                {step > 0 ? (
+                  <Button
+                    label="←  Back"
+                    variant="outline"
+                    style={styles.backAction}
+                    disabled={saving}
+                    onPress={() => showStep((step - 1) as Step)}
+                  />
+                ) : null}
+                <Button
+                  label={step === 2 ? "Start selling  →" : "Next  →"}
+                  style={styles.nextAction}
+                  onPress={next}
+                  loading={saving}
+                  disabled={step === 1 && addressesLoading}
+                />
+              </View>
               {step === 0 ? (
                 <Pressable onPress={() => authClient.signOut()} style={styles.signOut}>
                   <ThemedText type="label" themeColor="textSecondary">
@@ -400,5 +412,8 @@ const styles = StyleSheet.create({
   },
   savedAddress: { gap: Space.half, padding: Space.three, borderWidth: 1, borderRadius: 8 },
   actions: { gap: Space.three },
+  actionRow: { flexDirection: "row", gap: Space.three },
+  backAction: { flex: 1 },
+  nextAction: { flex: 2 },
   signOut: { alignSelf: "center", paddingVertical: Space.two },
 });
