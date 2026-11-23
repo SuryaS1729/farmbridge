@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
+import { SegmentedToggle } from "@/components/ui/segmented-toggle";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Space } from "@/constants/theme";
@@ -29,6 +30,11 @@ import {
   formatQuantity,
 } from "@/lib/farmbridge-api";
 import { loadState, profileQuery, queryKeys, quotesQuery, todayPriceQuery } from "@/lib/queries";
+
+const PRICE_UNIT_OPTIONS = [
+  { value: "kg", label: "kg", accessibilityLabel: "Show price per kilogram" },
+  { value: "quintal", label: "quintal", accessibilityLabel: "Show price per quintal" },
+] as const;
 
 export default function FarmerHomeScreen() {
   const insets = useSafeAreaInsets();
@@ -95,40 +101,12 @@ export default function FarmerHomeScreen() {
             <ThemedText type="label" themeColor="textSecondary">
               TODAY'S COCOA BASE PRICE
             </ThemedText>
-            <View
+            <SegmentedToggle
               accessibilityLabel="Daily price unit"
-              style={[
-                styles.priceUnitToggle,
-                { borderColor: theme.border, backgroundColor: theme.backgroundElement },
-              ]}
-            >
-              {(["kg", "quintal"] as const).map((unit) => {
-                const selected = priceUnit === unit;
-                return (
-                  <Pressable
-                    key={unit}
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      "Show price per " + (unit === "kg" ? "kilogram" : "quintal")
-                    }
-                    accessibilityState={{ selected }}
-                    onPress={() => setPriceUnit(unit)}
-                    style={[
-                      styles.priceUnitButton,
-                      selected && { backgroundColor: theme.accent },
-                    ]}
-                  >
-                    <ThemedText
-                      type="smallBold"
-                      themeColor={selected ? "accentText" : "textSecondary"}
-                      style={styles.priceUnitLabel}
-                    >
-                      {unit === "kg" ? "kg" : "quintal"}
-                    </ThemedText>
-                  </Pressable>
-                );
-              })}
-            </View>
+              options={PRICE_UNIT_OPTIONS}
+              value={priceUnit}
+              onChange={setPriceUnit}
+            />
           </View>
           {loadingPrice ? (
             <ActivityIndicator />
@@ -325,27 +303,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: Space.two,
   },
-  priceUnitToggle: {
-    flexDirection: "row",
-    padding: 2,
-    borderWidth: 1,
-    borderRadius: 8,
-  },
-  priceUnitButton: {
-    minWidth: 38,
-    minHeight: 30,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: Space.two,
-    borderRadius: 6,
-  },
   stagePill: {
     paddingHorizontal: Space.two,
     paddingVertical: 2,
     borderRadius: 6,
-  },
-  priceUnitLabel: {
-    fontSize: 11,
-    lineHeight: 16,
   },
 });
