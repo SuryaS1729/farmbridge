@@ -2,13 +2,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
   View,
 } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, useNavigation } from "expo-router";
+import { usePreventRemove } from "expo-router/react-navigation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -96,6 +100,26 @@ function fieldsFromQuote(quote: FarmerOffer): { fields: QuoteFields; unit: Quant
   };
 }
 
+/**
+ * Moves the decimal point without floating-point rounding: +2 turns quintals into kg,
+ * -2 turns kg into quintals. Returns "" for anything that isn't a plain number.
+ */
+function shiftDecimal(value: string, places: number) {
+  const match = /^(\d*)(?:\.(\d*))?$/.exec(value.trim());
+  if (!match || value.trim() === "") return "";
+  const integer = match[1] ?? "";
+  let digits = integer + (match[2] ?? "");
+  let point = integer.length + places;
+  if (point < 0) {
+    digits = "0".repeat(-point) + digits;
+    point = 0;
+  }
+  digits = digits.padEnd(point, "0");
+  const whole = digits.slice(0, point).replace(/^0+(?=\d)/, "") || "0";
+  const fraction = digits.slice(point).replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole;
+}
+
 function InputField({
   label,
   value,
@@ -160,6 +184,8 @@ export default function QuoteScreen() {
   const [quantityUnit, setQuantityUnit] = useState<QuantityUnit>("quintal");
   const [reviewing, setReviewing] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  // True once the farmer changes anything, so leaving asks before throwing it away.
+  const [dirty, setDirty] = useState(false);
   // A refused submit or lost connection; field problems are shown under each field instead.
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors<QuoteErrorKey>>({});
@@ -265,7 +291,39 @@ export default function QuoteScreen() {
   function setField<K extends keyof QuoteFields>(key: K, value: QuoteFields[K]) {
     setFields((current) => ({ ...current, [key]: value }));
     setFieldErrors((current) => ({ ...current, [key]: undefined }));
+    setDirty(true);
   }
+
+  /** Switches units and converts the amount already typed, instead of clearing it. */
+  function changeUnit(unit: QuantityUnit) {
+    if (unit === quantityUnit) return;
+    const converted = shiftDecimal(fields.quantity, unit === "kg" ? 2 : -2);
+    setQuantityUnit(unit);
+    setField("quantity", converted);
+    // e.g. 250.5 kg is 2.505 quintals, more decimals than quintals allow: say so now, not at Review.
+    if (unit === "quintal" && /\.\d{3,}$/.test(converted)) {
+      setFieldErrors((current) => ({
+        ...current,
+        quantity: `That is ${converted} quintals. Quintals take up to two decimals, so round it or switch back to kg.`,
+      }));
+    }
+  }
+
+  // Back button, Android back gesture, Cancel and the top back link all land here.
+  // Ask before discarding typed details; a submitted quote leaves freely.
+  const navigation = useNavigation();
+  usePreventRemove(dirty && !submitted, ({ data }) => {
+    Alert.alert(
+      revisingId ? "Discard your changes?" : "Discard this offer?",
+      revisingId
+        ? "Your quote stays as it was before you started editing."
+        : "The details you entered will be lost.",
+      [
+        { text: "Keep editing", style: "cancel" },
+        { text: "Discard", style: "destructive", onPress: () => navigation.dispatch(data.action) },
+      ],
+    );
+  });
 
   /** Every problem at once, in on-screen order, so the farmer can fix them in one pass. */
   function validate(): FieldErrors<QuoteErrorKey> {
@@ -377,341 +435,357 @@ export default function QuoteScreen() {
 
   return (
     <ThemedView style={styles.screen}>
-      <ScrollView
-        ref={scrollRef}
-        contentContainerStyle={[
-          styles.content,
-          {
-            paddingTop: insets.top + Space.four,
-            paddingBottom: insets.bottom + Space.seven,
-          },
-        ]}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAvoidingView
+        style={styles.screen}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <View style={styles.header}>
-          <ThemedText type="label" themeColor="textSecondary">
-            {revisingId ? "SELL COCOA · CHANGE QUOTE" : "SELL COCOA"}
-          </ThemedText>
-          <ThemedText type="title">
-            {submitted
-              ? revisingId ? "Quote updated." : "Quote submitted."
-              : reviewing
-                ? revisingId ? "Review your changes." : "Review your quote."
-                : revisingId ? "Change your quote." : "Make an offer."}
-          </ThemedText>
-          <ThemedText themeColor="textSecondary">
-            {submitted
-              ? "The buying team will review the details you submitted."
-              : revisingId
-                ? "You can change any detail until the buying team decides. The quote still expires at the end of today."
-                : "Submitting this quote means you want to sell this cocoa. It stays open until the end of today."}
-          </ThemedText>
-        </View>
-
-        {loadingPrice ? (
-          <Card style={styles.priceCard}>
-            <ActivityIndicator />
-            <ThemedText themeColor="textSecondary">Loading today's cocoa price…</ThemedText>
-          </Card>
-        ) : priceError ? (
-          <Card style={styles.priceCard}>
-            <ThemedText themeColor="textSecondary">{priceError}</ThemedText>
-            <Button label="Retry" variant="outline" onPress={() => void priceQuery.refetch()} />
-          </Card>
-        ) : price ? (
-          <Card style={styles.priceCard}>
-            <ThemedText type="label" themeColor="textSecondary">
-              TODAY'S BASE PRICE
-            </ThemedText>
-            <ThemedText type="figure">₹{formatPricePerKg(price.basePricePerKg)} / kg</ThemedText>
-            <ThemedText themeColor="textSecondary">
-              Your offer price must meet or exceed this price.
-            </ThemedText>
-          </Card>
-        ) : (
-          <Card style={styles.priceCard}>
-            <ThemedText type="label" themeColor="textSecondary">
-              NO PRICE PUBLISHED
-            </ThemedText>
-            <ThemedText themeColor="textSecondary">
-              The buying team has not published today's cocoa price yet.
-            </ThemedText>
-          </Card>
-        )}
-
-        {submitted ? (
-          <Card style={styles.formCard}>
-            <ThemedText type="label" themeColor="textSecondary">
-              YOUR QUOTE IS WITH THE BUYING TEAM
-            </ThemedText>
-            <ThemedText>
-              {revisingId
-                ? "Your changes are saved. The buying team will see the new details when they review your quote."
-                : "You can return to Home. The buying team will review your price, quantity, quality details, ready date, and pickup address."}
-            </ThemedText>
-            {/* dismissTo goes back to a My Quotes or Home already in the stack (e.g. a revise
-                started from My Quotes) instead of stacking a second copy on top. */}
-            <Button label="View my quotes" variant="outline" onPress={() => router.dismissTo("/my-quotes")} />
-            <Button label="Back to Home" onPress={() => router.dismissTo("/(farmer)/(tabs)")} />
-          </Card>
-        ) : waitingForQuote ? (
-          <Card style={styles.formCard}>
-            <ActivityIndicator />
-            <ThemedText themeColor="textSecondary">Loading your quote…</ThemedText>
-          </Card>
-        ) : revisingClosed ? (
-          <Card style={styles.formCard}>
-            <ThemedText type="label" themeColor="textSecondary">
-              THIS QUOTE CAN NO LONGER BE CHANGED
-            </ThemedText>
-            <ThemedText>
-              The buying team has already decided on it, or it expired at the end of the day. Check My quotes for its status.
-            </ThemedText>
-            <Button label="View my quotes" onPress={() => router.dismissTo("/my-quotes")} />
-          </Card>
-        ) : openQuote ? (
-          <Card style={styles.formCard}>
-            <ThemedText type="label" themeColor="textSecondary">
-              YOU ALREADY HAVE AN OPEN QUOTE
-            </ThemedText>
-            <ThemedText>
-              You can have one open quote at a time. Change that quote instead, or wait for the buying team to decide.
-            </ThemedText>
-            <Button
-              label="Change my open quote  →"
-              onPress={() => {
-                // Re-pick the address from the open quote once its details load.
-                setSelectedAddressId(null);
-                setError(null);
-                router.setParams({ offerId: openQuote.id });
-              }}
-            />
-          </Card>
-        ) : reviewing ? (
-          <Card style={styles.formCard}>
-            <ThemedText type="label" themeColor="textSecondary">
-              CHECK EACH DETAIL BEFORE SUBMITTING
-            </ThemedText>
-            <ReviewRow label="Offer price" value={`₹${fields.offeredPricePerKg} per kg`} />
-            <ReviewRow
-              label="Quantity"
-              value={`${fields.quantity} ${quantityUnit === "quintal" ? "quintals" : "kg"}`}
-            />
-            <View style={[styles.totalBox, { backgroundColor: theme.accentSoft }]}>
-              <ThemedText type="label" themeColor="textSecondary">
-                ESTIMATED VALUE
-              </ThemedText>
-              <ThemedText type="figure">{formatRupees(estimatedTotal)}</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                {`₹${fields.offeredPricePerKg}/kg × ${quantityKg.toLocaleString("en-IN")} kg. You are paid for the weight measured at pickup, so the final amount may differ.`}
-              </ThemedText>
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={[
+            styles.content,
+            {
+              paddingTop: insets.top + Space.four,
+              paddingBottom: insets.bottom + Space.seven,
+            },
+          ]}
+          keyboardShouldPersistTaps="handled"
+        >
+          {!submitted ? (
+            <View style={styles.topline}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.back()}
+                hitSlop={8}
+                style={styles.backButton}
+              >
+                <ThemedText type="smallBold">← Back</ThemedText>
+              </Pressable>
             </View>
-            <ReviewRow label="Bean moisture" value={`${fields.moisturePercent}%`} />
-            <ReviewRow label="Bean count" value={`${fields.beanCountPer100g} per 100 g`} />
-            <ReviewRow label="Ready for pickup" value={formatDateForIndia(fields.readyOn)} />
-            <ReviewRow label="Pickup address" value={pickupSummary} />
-            {usingNewAddress ? (
-              <ThemedText type="small" themeColor="textSecondary">
-                This address will be saved to your account for next time.
-              </ThemedText>
-            ) : null}
-            <ThemedText themeColor="textSecondary">
-              Moisture and bean count are self-reported. The administrator reviews these details before deciding whether to accept the quote.
+          ) : null}
+
+          <View style={styles.header}>
+            <ThemedText type="label" themeColor="textSecondary">
+              {revisingId ? "SELL COCOA · CHANGE QUOTE" : "SELL COCOA"}
             </ThemedText>
-            <FormError message={error} />
-            <Button
-              label="Edit details"
-              variant="outline"
-              onPress={() => {
-                setReviewing(false);
-                setError(null);
-              }}
-            />
-            <Button
-              label={revisingId ? "Save changes" : "Submit quote"}
-              onPress={confirmSubmission}
-              loading={submitting}
-              disabled={!price}
-            />
-          </Card>
-        ) : price ? (
-          <Card style={styles.formCard}>
-            {revisingQuote?.status === "invalid_needs_revision" ? (
-              <View style={[styles.notice, { borderColor: theme.accent }]}>
-                <ThemedText type="smallBold">Today&apos;s price went up</ThemedText>
+            <ThemedText type="title">
+              {submitted
+                ? revisingId ? "Quote updated." : "Quote submitted."
+                : reviewing
+                  ? revisingId ? "Review your changes." : "Review your quote."
+                  : revisingId ? "Change your quote." : "Make an offer."}
+            </ThemedText>
+            <ThemedText themeColor="textSecondary">
+              {submitted
+                ? "The buying team will review the details you submitted."
+                : revisingId
+                  ? "You can change any detail until the buying team decides. The quote still expires at the end of today."
+                  : "Submitting this quote means you want to sell this cocoa. It stays open until the end of today."}
+            </ThemedText>
+          </View>
+
+          {loadingPrice ? (
+            <Card style={styles.priceCard}>
+              <ActivityIndicator />
+              <ThemedText themeColor="textSecondary">Loading today's cocoa price…</ThemedText>
+            </Card>
+          ) : priceError ? (
+            <Card style={styles.priceCard}>
+              <ThemedText themeColor="textSecondary">{priceError}</ThemedText>
+              <Button label="Retry" variant="outline" onPress={() => void priceQuery.refetch()} />
+            </Card>
+          ) : price ? (
+            <Card style={styles.priceCard}>
+              <ThemedText type="label" themeColor="textSecondary">
+                TODAY'S BASE PRICE
+              </ThemedText>
+              <ThemedText type="figure">₹{formatPricePerKg(price.basePricePerKg)} / kg</ThemedText>
+              <ThemedText themeColor="textSecondary">
+                Your offer price must meet or exceed this price.
+              </ThemedText>
+            </Card>
+          ) : (
+            <Card style={styles.priceCard}>
+              <ThemedText type="label" themeColor="textSecondary">
+                NO PRICE PUBLISHED
+              </ThemedText>
+              <ThemedText themeColor="textSecondary">
+                The buying team has not published today's cocoa price yet.
+              </ThemedText>
+            </Card>
+          )}
+
+          {submitted ? (
+            <Card style={styles.formCard}>
+              <ThemedText type="label" themeColor="textSecondary">
+                YOUR QUOTE IS WITH THE BUYING TEAM
+              </ThemedText>
+              <ThemedText>
+                {revisingId
+                  ? "Your changes are saved. The buying team will see the new details when they review your quote."
+                  : "You can return to Home. The buying team will review your price, quantity, quality details, ready date, and pickup address."}
+              </ThemedText>
+              {/* dismissTo goes back to a My Quotes or Home already in the stack (e.g. a revise
+                  started from My Quotes) instead of stacking a second copy on top. */}
+              <Button label="View my quotes" variant="outline" onPress={() => router.dismissTo("/my-quotes")} />
+              <Button label="Back to Home" onPress={() => router.dismissTo("/(farmer)/(tabs)")} />
+            </Card>
+          ) : waitingForQuote ? (
+            <Card style={styles.formCard}>
+              <ActivityIndicator />
+              <ThemedText themeColor="textSecondary">Loading your quote…</ThemedText>
+            </Card>
+          ) : revisingClosed ? (
+            <Card style={styles.formCard}>
+              <ThemedText type="label" themeColor="textSecondary">
+                THIS QUOTE CAN NO LONGER BE CHANGED
+              </ThemedText>
+              <ThemedText>
+                The buying team has already decided on it, or it expired at the end of the day. Check My quotes for its status.
+              </ThemedText>
+              <Button label="View my quotes" onPress={() => router.dismissTo("/my-quotes")} />
+            </Card>
+          ) : openQuote ? (
+            <Card style={styles.formCard}>
+              <ThemedText type="label" themeColor="textSecondary">
+                YOU ALREADY HAVE AN OPEN QUOTE
+              </ThemedText>
+              <ThemedText>
+                You can have one open quote at a time. Change that quote instead, or wait for the buying team to decide.
+              </ThemedText>
+              <Button
+                label="Change my open quote  →"
+                onPress={() => {
+                  // Re-pick the address from the open quote once its details load.
+                  setSelectedAddressId(null);
+                  setError(null);
+                  router.setParams({ offerId: openQuote.id });
+                }}
+              />
+            </Card>
+          ) : reviewing ? (
+            <Card style={styles.formCard}>
+              <ThemedText type="label" themeColor="textSecondary">
+                CHECK EACH DETAIL BEFORE SUBMITTING
+              </ThemedText>
+              <ReviewRow label="Offer price" value={`₹${fields.offeredPricePerKg} per kg`} />
+              <ReviewRow
+                label="Quantity"
+                value={`${fields.quantity} ${quantityUnit === "quintal" ? "quintals" : "kg"}`}
+              />
+              <View style={[styles.totalBox, { backgroundColor: theme.accentSoft }]}>
+                <ThemedText type="label" themeColor="textSecondary">
+                  ESTIMATED VALUE
+                </ThemedText>
+                <ThemedText type="figure">{formatRupees(estimatedTotal)}</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
-                  {`Your offer of ₹${formatPricePerKg(revisingQuote.offeredPricePerKg)}/kg is now below today's base price of ₹${formatPricePerKg(price.basePricePerKg)}/kg. Raise your offer to at least ₹${formatPricePerKg(price.basePricePerKg)} to keep this quote open.`}
+                  {`₹${fields.offeredPricePerKg}/kg × ${quantityKg.toLocaleString("en-IN")} kg. You are paid for the weight measured at pickup, so the final amount may differ.`}
                 </ThemedText>
               </View>
-            ) : null}
-            <InputField
-              label="OFFER PRICE PER KG (₹)"
-              error={fieldErrors.offeredPricePerKg}
-              fieldRef={fieldRef("offeredPricePerKg")}
-              value={fields.offeredPricePerKg}
-              onChangeText={(value) => setField("offeredPricePerKg", value)}
-              placeholder={price ? offerPriceFromBase(price.basePricePerKg) : "e.g. 250"}
-              keyboardType="decimal-pad"
-            />
-            <ThemedText type="small" themeColor="textSecondary">
-              {revisingId
-                ? `Today's base price is ₹${formatPricePerKg(price.basePricePerKg)}/kg. Your offer must be at least this.`
-                : "Filled in with today's base price, the lowest price you can offer. You can offer more."}
-            </ThemedText>
-            <View style={styles.field}>
-              <ThemedText type="label" themeColor="textSecondary">
-                AVAILABLE QUANTITY
+              <ReviewRow label="Bean moisture" value={`${fields.moisturePercent}%`} />
+              <ReviewRow label="Bean count" value={`${fields.beanCountPer100g} per 100 g`} />
+              <ReviewRow label="Ready for pickup" value={formatDateForIndia(fields.readyOn)} />
+              <ReviewRow label="Pickup address" value={pickupSummary} />
+              {usingNewAddress ? (
+                <ThemedText type="small" themeColor="textSecondary">
+                  This address will be saved to your account for next time.
+                </ThemedText>
+              ) : null}
+              <ThemedText themeColor="textSecondary">
+                Moisture and bean count are self-reported. The administrator reviews these details before deciding whether to accept the quote.
               </ThemedText>
-              <View style={styles.unitSwitch}>
-                {(["quintal", "kg"] as const).map((unit) => {
-                  const selected = quantityUnit === unit;
-                  return (
-                    <Pressable
-                      key={unit}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      onPress={() => {
-                        if (unit !== quantityUnit) {
-                          setQuantityUnit(unit);
-                          setField("quantity", "");
-                          setError(null);
-                        }
-                      }}
-                      style={[
-                        styles.unitOption,
-                        selected && styles.unitOptionSelected,
-                      ]}
-                    >
-                      <ThemedText
-                        type="smallBold"
-                        style={selected ? styles.unitOptionTextSelected : undefined}
-                      >
-                        {unit === "quintal" ? "Quintals" : "Kilograms (kg)"}
-                      </ThemedText>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <FormError message={error} />
+              <Button
+                label="Edit details"
+                variant="outline"
+                onPress={() => {
+                  setReviewing(false);
+                  setError(null);
+                }}
+              />
+              <Button
+                label={revisingId ? "Save changes" : "Submit quote"}
+                onPress={confirmSubmission}
+                loading={submitting}
+                disabled={!price}
+              />
+            </Card>
+          ) : price ? (
+            <Card style={styles.formCard}>
+              {revisingQuote?.status === "invalid_needs_revision" ? (
+                <View style={[styles.notice, { borderColor: theme.accent }]}>
+                  <ThemedText type="smallBold">Today&apos;s price went up</ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {`Your offer of ₹${formatPricePerKg(revisingQuote.offeredPricePerKg)}/kg is now below today's base price of ₹${formatPricePerKg(price.basePricePerKg)}/kg. Raise your offer to at least ₹${formatPricePerKg(price.basePricePerKg)} to keep this quote open.`}
+                  </ThemedText>
+                </View>
+              ) : null}
               <InputField
-                label={quantityUnit === "quintal" ? "QUANTITY (QUINTALS)" : "QUANTITY (KG)"}
-                error={fieldErrors.quantity}
-                fieldRef={fieldRef("quantity")}
-                value={fields.quantity}
-                onChangeText={(value) => setField("quantity", value)}
-                placeholder={quantityUnit === "quintal" ? "e.g. 2.50" : "e.g. 250"}
+                label="OFFER PRICE PER KG (₹)"
+                error={fieldErrors.offeredPricePerKg}
+                fieldRef={fieldRef("offeredPricePerKg")}
+                value={fields.offeredPricePerKg}
+                onChangeText={(value) => setField("offeredPricePerKg", value)}
+                placeholder={price ? offerPriceFromBase(price.basePricePerKg) : "e.g. 250"}
                 keyboardType="decimal-pad"
               />
-            </View>
-            <ThemedText type="small" themeColor="textSecondary">
-              {quantityUnit === "quintal"
-                ? "1 quintal = 100 kg. Enter up to two decimal places."
-                : "Enter up to three decimal places. Changing units clears the quantity."}
-            </ThemedText>
-            <InputField
-              label="BEAN MOISTURE (%)"
-              error={fieldErrors.moisturePercent}
-              fieldRef={fieldRef("moisturePercent")}
-              value={fields.moisturePercent}
-              onChangeText={(value) => setField("moisturePercent", value)}
-              placeholder="e.g. 7.5"
-              keyboardType="decimal-pad"
-            />
-            <InputField
-              label="BEAN COUNT PER 100 G"
-              error={fieldErrors.beanCountPer100g}
-              fieldRef={fieldRef("beanCountPer100g")}
-              value={fields.beanCountPer100g}
-              onChangeText={(value) => setField("beanCountPer100g", value)}
-              placeholder="e.g. 110"
-              keyboardType="decimal-pad"
-            />
-            <DateField
-              label="READY FOR PICKUP ON"
-              error={fieldErrors.readyOn}
-              fieldRef={fieldRef("readyOn")}
-              value={fields.readyOn}
-              onChange={(value) => setField("readyOn", value)}
-              minimumDate={todayInIndia()}
-              placeholder="Choose the date"
-            />
-            <View ref={fieldRef("pickupAddress")} style={styles.field}>
-              <ThemedText type="label" themeColor="textSecondary">
-                PICKUP ADDRESS
+              <ThemedText type="small" themeColor="textSecondary">
+                {revisingId
+                  ? `Today's base price is ₹${formatPricePerKg(price.basePricePerKg)}/kg. Your offer must be at least this.`
+                  : "Filled in with today's base price, the lowest price you can offer. You can offer more."}
               </ThemedText>
-              {addressesLoading ? (
-                <ActivityIndicator />
-              ) : addressesError ? (
-                <>
-                  <ThemedText type="small" themeColor="textSecondary">{addressesError}</ThemedText>
-                  <Button label="Retry" variant="outline" onPress={() => void addressQuery.refetch()} />
-                </>
-              ) : (
-                <>
-                  {addresses.length > 0 ? (
-                    <AddressPicker
-                      addresses={addresses}
-                      selectedId={selectedAddressId}
-                      onSelect={(id) => {
-                        setSelectedAddressId(id);
-                        setFieldErrors((current) => ({
-                          ...current,
-                          pickupAddress: undefined,
-                          addressLabel: undefined,
-                          addressText: undefined,
-                        }));
-                      }}
-                      allowNew
-                    />
-                  ) : (
-                    <ThemedText type="small" themeColor="textSecondary">
-                      Where should the driver collect your cocoa? We'll save this address for your next quote.
-                    </ThemedText>
-                  )}
-                  <FieldError message={fieldErrors.pickupAddress} />
-                  {usingNewAddress ? (
-                    // The scroll target for a problem in the new address's name or text.
-                    <View
-                      ref={(node) => {
-                        fieldRef("addressLabel")(node);
-                        fieldRef("addressText")(node);
-                      }}
-                    >
-                      <AddressFields
-                        value={newAddress}
-                        onChange={(value, changed) => {
-                          setNewAddress(value);
-                          const key = changed === "label" ? "addressLabel" : "addressText";
-                          setFieldErrors((current) => ({ ...current, [key]: undefined }));
+              <View style={styles.field}>
+                <ThemedText type="label" themeColor="textSecondary">
+                  AVAILABLE QUANTITY
+                </ThemedText>
+                <View style={styles.unitSwitch}>
+                  {(["quintal", "kg"] as const).map((unit) => {
+                    const selected = quantityUnit === unit;
+                    return (
+                      <Pressable
+                        key={unit}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        onPress={() => changeUnit(unit)}
+                        style={[
+                          styles.unitOption,
+                          selected
+                            ? { borderColor: theme.accent, backgroundColor: theme.accentSoft }
+                            : { borderColor: theme.border },
+                        ]}
+                      >
+                        <ThemedText
+                          type="smallBold"
+                          themeColor={selected ? "text" : "textSecondary"}
+                        >
+                          {unit === "quintal" ? "Quintals" : "Kilograms (kg)"}
+                        </ThemedText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <InputField
+                  label={quantityUnit === "quintal" ? "QUANTITY (QUINTALS)" : "QUANTITY (KG)"}
+                  error={fieldErrors.quantity}
+                  fieldRef={fieldRef("quantity")}
+                  value={fields.quantity}
+                  onChangeText={(value) => setField("quantity", value)}
+                  placeholder={quantityUnit === "quintal" ? "e.g. 2.50" : "e.g. 250"}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+              <ThemedText type="small" themeColor="textSecondary">
+                {quantityUnit === "quintal"
+                  ? "1 quintal = 100 kg. Enter up to two decimal places."
+                  : "Enter up to three decimal places. Switching units converts the amount."}
+              </ThemedText>
+              <InputField
+                label="BEAN MOISTURE (%)"
+                error={fieldErrors.moisturePercent}
+                fieldRef={fieldRef("moisturePercent")}
+                value={fields.moisturePercent}
+                onChangeText={(value) => setField("moisturePercent", value)}
+                placeholder="e.g. 7.5"
+                keyboardType="decimal-pad"
+              />
+              <InputField
+                label="BEAN COUNT PER 100 G"
+                error={fieldErrors.beanCountPer100g}
+                fieldRef={fieldRef("beanCountPer100g")}
+                value={fields.beanCountPer100g}
+                onChangeText={(value) => setField("beanCountPer100g", value)}
+                placeholder="e.g. 110"
+                keyboardType="decimal-pad"
+              />
+              <DateField
+                label="READY FOR PICKUP ON"
+                error={fieldErrors.readyOn}
+                fieldRef={fieldRef("readyOn")}
+                value={fields.readyOn}
+                onChange={(value) => setField("readyOn", value)}
+                minimumDate={todayInIndia()}
+                placeholder="Choose the date"
+              />
+              <View ref={fieldRef("pickupAddress")} style={styles.field}>
+                <ThemedText type="label" themeColor="textSecondary">
+                  PICKUP ADDRESS
+                </ThemedText>
+                {addressesLoading ? (
+                  <ActivityIndicator />
+                ) : addressesError ? (
+                  <>
+                    <ThemedText type="small" themeColor="textSecondary">{addressesError}</ThemedText>
+                    <Button label="Retry" variant="outline" onPress={() => void addressQuery.refetch()} />
+                  </>
+                ) : (
+                  <>
+                    {addresses.length > 0 ? (
+                      <AddressPicker
+                        addresses={addresses}
+                        selectedId={selectedAddressId}
+                        onSelect={(id) => {
+                          setSelectedAddressId(id);
+                          setDirty(true);
+                          setFieldErrors((current) => ({
+                            ...current,
+                            pickupAddress: undefined,
+                            addressLabel: undefined,
+                            addressText: undefined,
+                          }));
                         }}
-                        errors={{ label: fieldErrors.addressLabel, address: fieldErrors.addressText }}
+                        allowNew
                       />
-                    </View>
-                  ) : null}
-                </>
-              )}
-            </View>
-            <ThemedText type="small" themeColor="textSecondary">
-              These quality details are self-reported. The administrator will review your quote.
-            </ThemedText>
-            <FormError
-              message={
-                hasErrors(fieldErrors)
-                  ? "Some details need fixing. Check the fields marked in red above."
-                  : error
-              }
-            />
-            <Button
-              label="Review quote  →"
-              onPress={reviewQuote}
-              disabled={addressesLoading || Boolean(addressesError)}
-            />
-          </Card>
-        ) : null}
+                    ) : (
+                      <ThemedText type="small" themeColor="textSecondary">
+                        Where should the driver collect your cocoa? We'll save this address for your next quote.
+                      </ThemedText>
+                    )}
+                    <FieldError message={fieldErrors.pickupAddress} />
+                    {usingNewAddress ? (
+                      // The scroll target for a problem in the new address's name or text.
+                      <View
+                        ref={(node) => {
+                          fieldRef("addressLabel")(node);
+                          fieldRef("addressText")(node);
+                        }}
+                      >
+                        <AddressFields
+                          value={newAddress}
+                          onChange={(value, changed) => {
+                            setNewAddress(value);
+                            setDirty(true);
+                            const key = changed === "label" ? "addressLabel" : "addressText";
+                            setFieldErrors((current) => ({ ...current, [key]: undefined }));
+                          }}
+                          errors={{ label: fieldErrors.addressLabel, address: fieldErrors.addressText }}
+                        />
+                      </View>
+                    ) : null}
+                  </>
+                )}
+              </View>
+              <ThemedText type="small" themeColor="textSecondary">
+                These quality details are self-reported. The administrator will review your quote.
+              </ThemedText>
+              <FormError
+                message={
+                  hasErrors(fieldErrors)
+                    ? "Some details need fixing. Check the fields marked in red above."
+                    : error
+                }
+              />
+              <Button
+                label="Review quote  →"
+                onPress={reviewQuote}
+                disabled={addressesLoading || Boolean(addressesError)}
+              />
+            </Card>
+          ) : null}
 
-        {!submitted ? (
-          <Button label="Cancel" variant="outline" onPress={() => router.back()} />
-        ) : null}
-      </ScrollView>
+          {!submitted ? (
+            <Button label="Cancel" variant="outline" onPress={() => router.back()} />
+          ) : null}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </ThemedView>
   );
 }
@@ -724,6 +798,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: Space.page,
   },
   header: { gap: Space.two },
+  topline: { flexDirection: "row", alignItems: "center" },
+  backButton: { paddingVertical: Space.two, paddingRight: Space.four },
   priceCard: { gap: Space.three, padding: Space.four },
   formCard: { gap: Space.three, padding: Space.four },
   field: { gap: Space.two },
@@ -738,15 +814,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: Space.two,
     borderWidth: 1,
-    borderColor: "#D5DED5",
     borderRadius: Radius.control,
-  },
-  unitOptionSelected: {
-    borderColor: "#2D6544",
-    backgroundColor: "#E9F2EA",
-  },
-  unitOptionTextSelected: {
-    color: "#245A40",
   },
   input: {
     minHeight: 54,
