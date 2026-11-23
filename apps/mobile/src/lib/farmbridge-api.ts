@@ -32,6 +32,15 @@ export function offerPriceFromBase(basePricePerKg: string) {
   return rest ? `${rupees}.${rest}` : rupees.toString();
 }
 
+/**
+ * A quantity in both units, e.g. "2.5 quintals (250 kg)". Quotes are stored in kg and
+ * don't record which unit the farmer typed, so showing both always matches what they entered.
+ */
+export function formatQuantity(quintals: string, kg: string) {
+  const unit = quintals === "1" ? "quintal" : "quintals";
+  return `${quintals} ${unit} (${formatPricePerKg(kg)} kg)`;
+}
+
 /** Whole rupees with Indian digit grouping, e.g. ₹1,23,456. */
 export function formatRupees(amount: number) {
   return `₹${new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(Math.round(amount))}`;
@@ -97,6 +106,7 @@ export type FarmerOffer = {
   dealStatus: "open" | "completed" | "cancelled" | null;
   acceptedAt: string | null;
   dealOfferedPricePerKg: string | null;
+  dealQuantityKg: string | null;
   dealQuantityQuintals: string | null;
   dealMoisturePercent: string | null;
   dealBeanCountPer100g: string | null;

@@ -15,6 +15,8 @@ import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus";
 import { useTheme } from "@/hooks/use-theme";
 import {
   formatDateForIndia,
+  formatPricePerKg,
+  formatQuantity,
   isOpenQuote,
   savePickupLocation as saveDealPickupLocation,
   type FarmerOffer,
@@ -230,16 +232,19 @@ export default function MyQuotesScreen() {
                     </ThemedText>
                   </View>
 
-                  <View style={styles.details}>
-                    <Detail label="Offer price" value={`₹${quote.offeredPricePerKg} / kg`} />
-                    <Detail label="Quantity" value={`${quote.quantityQuintals} quintals`} />
-                    <Detail label="Moisture" value={`${quote.moisturePercent}%`} />
-                    <Detail label="Bean count" value={`${quote.beanCountPer100g} per 100 g`} />
-                    <Detail label="Expected ready date" value={formatDateForIndia(quote.readyOn)} />
-                    {quote.offerPickupLocation && !accepted ? (
-                      <Detail label="Pickup address" value={quote.offerPickupLocation} />
-                    ) : null}
-                  </View>
+                  {/* An accepted quote's terms are shown once, in the deal panel below. */}
+                  {accepted ? null : (
+                    <View style={styles.details}>
+                      <Detail label="Offer price" value={`₹${formatPricePerKg(quote.offeredPricePerKg)} / kg`} />
+                      <Detail label="Quantity" value={formatQuantity(quote.quantityQuintals, quote.quantityKg)} />
+                      <Detail label="Moisture" value={`${formatPricePerKg(quote.moisturePercent)}%`} />
+                      <Detail label="Bean count" value={`${formatPricePerKg(quote.beanCountPer100g)} per 100 g`} />
+                      <Detail label="Ready for pickup" value={formatDateForIndia(quote.readyOn)} />
+                      {quote.offerPickupLocation ? (
+                        <Detail label="Pickup address" value={quote.offerPickupLocation} />
+                      ) : null}
+                    </View>
+                  )}
 
                   {quote.status === "pending" ? (
                     <ThemedText type="small" themeColor="textSecondary">
@@ -260,7 +265,7 @@ export default function MyQuotesScreen() {
                   ) : null}
                   {quote.status === "rejected" && quote.rejectionReason ? (
                     <View style={[styles.reason, { borderColor: theme.border }]}>
-                      <ThemedText type="label" themeColor="textSecondary">ADMIN REASON</ThemedText>
+                      <ThemedText type="label" themeColor="textSecondary">REASON FROM THE BUYING TEAM</ThemedText>
                       <ThemedText>{quote.rejectionReason}</ThemedText>
                     </View>
                   ) : null}
@@ -276,14 +281,29 @@ export default function MyQuotesScreen() {
                         ) : null}
                       </View>
                       <ThemedText type="small" themeColor="textSecondary">
-                        Accepted {quote.acceptedAt ? formatSubmittedDate(quote.acceptedAt) : ""}. These are the terms agreed with the admin.
+                        {quote.acceptedAt ? `Accepted on ${formatSubmittedDate(quote.acceptedAt)}. ` : ""}
+                        These terms are agreed with the buying team and won&apos;t change, even if the daily price does.
                       </ThemedText>
                       <View style={styles.details}>
-                        <Detail label="Locked price" value={`₹${quote.dealOfferedPricePerKg} / kg`} />
-                        <Detail label="Locked quantity" value={`${quote.dealQuantityQuintals} quintals`} />
-                        <Detail label="Locked moisture" value={`${quote.dealMoisturePercent}%`} />
-                        <Detail label="Locked bean count" value={`${quote.dealBeanCountPer100g} per 100 g`} />
-                        <Detail label="Expected ready date" value={quote.dealReadyOn ? formatDateForIndia(quote.dealReadyOn) : ""} />
+                        <Detail
+                          label="Agreed price"
+                          value={quote.dealOfferedPricePerKg ? `₹${formatPricePerKg(quote.dealOfferedPricePerKg)} / kg` : ""}
+                        />
+                        <Detail
+                          label="Agreed quantity"
+                          value={quote.dealQuantityQuintals && quote.dealQuantityKg
+                            ? formatQuantity(quote.dealQuantityQuintals, quote.dealQuantityKg)
+                            : ""}
+                        />
+                        <Detail
+                          label="Moisture"
+                          value={quote.dealMoisturePercent ? `${formatPricePerKg(quote.dealMoisturePercent)}%` : ""}
+                        />
+                        <Detail
+                          label="Bean count"
+                          value={quote.dealBeanCountPer100g ? `${formatPricePerKg(quote.dealBeanCountPer100g)} per 100 g` : ""}
+                        />
+                        <Detail label="Ready for pickup" value={quote.dealReadyOn ? formatDateForIndia(quote.dealReadyOn) : ""} />
                         <Detail
                           label="Scheduled pickup date"
                           value={quote.pickupScheduledOn
@@ -292,8 +312,8 @@ export default function MyQuotesScreen() {
                         />
                         <Detail
                           label="Collected"
-                          value={quote.collectedOn && quote.collectedWeightQuintals
-                            ? `${quote.collectedWeightQuintals} quintals on ${formatDateForIndia(quote.collectedOn)}`
+                          value={quote.collectedOn && quote.collectedWeightQuintals && quote.collectedWeightKg
+                            ? `${formatQuantity(quote.collectedWeightQuintals, quote.collectedWeightKg)} on ${formatDateForIndia(quote.collectedOn)}`
                             : "Not collected yet"}
                         />
                       </View>
@@ -317,7 +337,7 @@ export default function MyQuotesScreen() {
                             <ThemedText type="small">{quote.pickupLocation}</ThemedText>
                           ) : (
                             <ThemedText type="small" themeColor="textSecondary">
-                              No pickup address yet. Choose one so the admin team can arrange a driver.
+                              No pickup address yet. Choose one so the buying team can arrange a driver.
                             </ThemedText>
                           )}
 
@@ -371,7 +391,7 @@ export default function MyQuotesScreen() {
                             <FieldError message={pickupLocationError} />
                           ) : pickupLocationNotice === quote.dealId ? (
                             <ThemedText type="small" themeColor="textSecondary">
-                              Pickup address updated. The admin team will send the driver there.
+                              Pickup address updated. The buying team will send the driver there.
                             </ThemedText>
                           ) : null}
                         </View>

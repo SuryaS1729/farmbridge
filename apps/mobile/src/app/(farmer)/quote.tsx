@@ -591,7 +591,7 @@ export default function QuoteScreen() {
                 </ThemedText>
               ) : null}
               <ThemedText themeColor="textSecondary">
-                Moisture and bean count are self-reported. The administrator reviews these details before deciding whether to accept the quote.
+                Moisture and bean count are self-reported. The buying team checks these details before deciding whether to accept the quote.
               </ThemedText>
               <FormError message={error} />
               <Button
@@ -764,7 +764,7 @@ export default function QuoteScreen() {
                 )}
               </View>
               <ThemedText type="small" themeColor="textSecondary">
-                These quality details are self-reported. The administrator will review your quote.
+                These quality details are self-reported. The buying team will check them when they review your quote.
               </ThemedText>
               <FormError
                 message={

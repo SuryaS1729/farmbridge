@@ -22,6 +22,7 @@ import {
   findOpenQuote,
   formatDateForIndia,
   formatPricePerKg,
+  formatQuantity,
 } from "@/lib/farmbridge-api";
 import { loadState, profileQuery, queryKeys, quotesQuery, todayPriceQuery } from "@/lib/queries";
 
@@ -179,7 +180,8 @@ export default function FarmerHomeScreen() {
               </ThemedText>
             </View>
             <ThemedText type="figure">
-              ₹{formatPricePerKg(openQuote.offeredPricePerKg)}/kg · {openQuote.quantityQuintals} quintals
+              ₹{formatPricePerKg(openQuote.offeredPricePerKg)}/kg ·{" "}
+              {formatQuantity(openQuote.quantityQuintals, openQuote.quantityKg)}
             </ThemedText>
             <ThemedText themeColor="textSecondary">
               {needsRevision
