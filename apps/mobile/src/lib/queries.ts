@@ -36,6 +36,9 @@ export const addressesQuery = queryOptions({
 export const quotesQuery = queryOptions({
   queryKey: queryKeys.quotes,
   queryFn: getMyQuotes,
+  // Poll so the buying team's decisions (accepted, pickup scheduled, collected) show up within
+  // a minute on Home and My Quotes. Paused in the background and offline, like the price.
+  refetchInterval: 60_000,
 });
 
 /** Message for a failed save: says "offline" plainly instead of a raw network error. */

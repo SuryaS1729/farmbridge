@@ -19,8 +19,12 @@ import { Space } from "@/constants/theme";
 import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus";
 import { useTheme } from "@/hooks/use-theme";
 import {
+  dealStage,
+  findActiveDeals,
   findOpenQuote,
   formatDateForIndia,
+  type DealStage,
+  type FarmerOffer,
   formatPricePerKg,
   formatQuantity,
 } from "@/lib/farmbridge-api";
@@ -40,6 +44,7 @@ export default function FarmerHomeScreen() {
   const price = priceQuery.data?.price ?? null;
   const openQuote = findOpenQuote(quotesResult.data?.offers);
   const needsRevision = openQuote?.status === "invalid_needs_revision";
+  const activeDeals = findActiveDeals(quotesResult.data?.offers);
 
   // Already cached by the onboarding check in _layout, so this costs no extra request.
   const profile = useQuery(profileQuery);
@@ -169,6 +174,10 @@ export default function FarmerHomeScreen() {
           />
         </Card>
 
+        {activeDeals.map((deal) => (
+          <DealCard key={deal.dealId} deal={deal} />
+        ))}
+
         {openQuote ? (
           <Card style={styles.priceCard}>
             <View style={styles.priceHeading}>
@@ -199,6 +208,80 @@ export default function FarmerHomeScreen() {
         ) : null}
       </ScrollView>
     </ThemedView>
+  );
+}
+
+const DEAL_STAGE_LABEL: Record<DealStage, string> = {
+  needs_address: "ADDRESS NEEDED",
+  awaiting_schedule: "ACCEPTED",
+  pickup_scheduled: "PICKUP SCHEDULED",
+  collected: "COLLECTED",
+};
+
+/** One accepted quote, showing where its pickup stands so the farmer knows what happens next. */
+function DealCard({ deal }: { deal: FarmerOffer }) {
+  const theme = useTheme();
+  const stage = dealStage(deal);
+  // Highlight the stages where the buying team has just done something the farmer must know about.
+  const highlighted = stage === "pickup_scheduled" || stage === "collected" || stage === "needs_address";
+
+  let message: string;
+  switch (stage) {
+    case "needs_address":
+      message = "The buying team accepted your quote. Choose a pickup address so they can arrange a driver.";
+      break;
+    case "awaiting_schedule":
+      message = "The buying team accepted your quote. They will schedule a pickup date soon.";
+      break;
+    case "pickup_scheduled":
+      message = `A driver will collect your cocoa on ${formatDateForIndia(deal.pickupScheduledOn!)}. Keep it ready at your pickup address.`;
+      break;
+    case "collected":
+      message =
+        deal.collectedWeightQuintals && deal.collectedWeightKg
+          ? `The driver collected ${formatQuantity(deal.collectedWeightQuintals, deal.collectedWeightKg)} on ${formatDateForIndia(deal.collectedOn!)}.`
+          : `The driver collected your cocoa on ${formatDateForIndia(deal.collectedOn!)}.`;
+      break;
+  }
+
+  return (
+    <Card style={styles.priceCard}>
+      <View style={styles.priceHeading}>
+        <ThemedText type="label" themeColor="textSecondary">
+          YOUR DEAL
+        </ThemedText>
+        <View
+          style={[
+            styles.stagePill,
+            { backgroundColor: highlighted ? theme.accent : theme.accentSoft },
+          ]}
+        >
+          <ThemedText
+            type="label"
+            themeColor={highlighted ? "accentText" : "text"}
+          >
+            {DEAL_STAGE_LABEL[stage]}
+          </ThemedText>
+        </View>
+      </View>
+      {deal.dealOfferedPricePerKg && deal.dealQuantityQuintals && deal.dealQuantityKg ? (
+        <ThemedText type="figure">
+          ₹{formatPricePerKg(deal.dealOfferedPricePerKg)}/kg ·{" "}
+          {formatQuantity(deal.dealQuantityQuintals, deal.dealQuantityKg)}
+        </ThemedText>
+      ) : null}
+      {deal.pickupScheduledOn && stage !== "collected" ? (
+        <ThemedText type="subtitle">
+          Pickup on {formatDateForIndia(deal.pickupScheduledOn)}
+        </ThemedText>
+      ) : null}
+      <ThemedText themeColor="textSecondary">{message}</ThemedText>
+      <Button
+        label={stage === "needs_address" ? "Choose pickup address  →" : "View deal details"}
+        variant={stage === "needs_address" ? undefined : "outline"}
+        onPress={() => router.push("../my-quotes")}
+      />
+    </Card>
   );
 }
 
@@ -254,6 +337,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: Space.two,
+    borderRadius: 6,
+  },
+  stagePill: {
+    paddingHorizontal: Space.two,
+    paddingVertical: 2,
     borderRadius: 6,
   },
   priceUnitLabel: {

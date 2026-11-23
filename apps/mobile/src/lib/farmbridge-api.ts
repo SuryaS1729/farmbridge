@@ -173,6 +173,31 @@ export function findOpenQuote(quotes: FarmerOffer[] | undefined) {
   return quotes?.find(isOpenQuote) ?? null;
 }
 
+/** How long a collected deal stays on Home. Nothing marks a deal completed yet, so this hides it. */
+const COLLECTED_DEAL_HOME_DAYS = 7;
+
+/** Where an accepted quote's deal is, from the farmer's point of view. */
+export type DealStage = "needs_address" | "awaiting_schedule" | "pickup_scheduled" | "collected";
+
+export function dealStage(quote: FarmerOffer): DealStage {
+  if (quote.collectedOn) return "collected";
+  if (quote.pickupScheduledOn) return "pickup_scheduled";
+  if (!quote.pickupLocation) return "needs_address";
+  return "awaiting_schedule";
+}
+
+/** Accepted deals still in progress, plus ones collected in the last week, newest first. */
+export function findActiveDeals(quotes: FarmerOffer[] | undefined) {
+  const cutoff = Date.now() - COLLECTED_DEAL_HOME_DAYS * 24 * 60 * 60 * 1000;
+  return (quotes ?? []).filter(
+    (quote) =>
+      quote.status === "accepted" &&
+      quote.dealId !== null &&
+      quote.dealStatus === "open" &&
+      (!quote.collectedOn || new Date(quote.collectedOn).getTime() >= cutoff),
+  );
+}
+
 export function getMyQuotes() {
   return request<{ offers: FarmerOffer[] }>("/api/offers/mine", {
     method: "GET",
