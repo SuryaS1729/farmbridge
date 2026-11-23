@@ -8,7 +8,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  TextInput,
   View,
 } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
@@ -33,10 +32,12 @@ import {
 } from "@/components/form-errors";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { InputField } from "@/components/ui/input-field";
+import { StepProgress } from "@/components/ui/step-progress";
 import { SegmentedToggle } from "@/components/ui/segmented-toggle";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-import { Fonts, Radius, Space } from "@/constants/theme";
+import { Radius, Space } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import {
   findOpenQuote,
@@ -153,66 +154,6 @@ function shiftDecimal(value: string, places: number) {
   return fraction ? `${whole}.${fraction}` : whole;
 }
 
-function InputField({
-  label,
-  value,
-  onChangeText,
-  placeholder,
-  keyboardType,
-  hint,
-  error,
-  fieldRef,
-  accessory,
-}: {
-  label: string;
-  value: string;
-  onChangeText: (value: string) => void;
-  placeholder: string;
-  keyboardType?: "decimal-pad" | "number-pad" | "default";
-  /** One short line under the input. */
-  hint?: string;
-  error?: string;
-  fieldRef?: (node: View | null) => void;
-  /** Shown at the right of the label, e.g. a unit switch. */
-  accessory?: ReactNode;
-}) {
-  const theme = useTheme();
-
-  return (
-    <View ref={fieldRef} style={styles.field}>
-      <View style={styles.labelRow}>
-        <ThemedText type="label" themeColor="textSecondary">
-          {label}
-        </ThemedText>
-        {accessory}
-      </View>
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={theme.textSecondary}
-        keyboardType={keyboardType}
-        style={[
-          styles.input,
-          {
-            color: theme.text,
-            backgroundColor: theme.backgroundElement,
-            borderColor: error ? theme.danger : theme.border,
-          },
-        ]}
-        accessibilityLabel={label}
-        accessibilityHint={hint}
-      />
-      {hint ? (
-        <ThemedText type="small" themeColor="textSecondary">
-          {hint}
-        </ThemedText>
-      ) : null}
-      <FieldError message={error} />
-    </View>
-  );
-}
-
 /** A row of large tappable choices, like Today / Tomorrow / Another day. */
 function ChoiceRow<T extends string>({
   options,
@@ -291,28 +232,6 @@ function ReviewSection({
         </Pressable>
       </View>
       {children}
-    </View>
-  );
-}
-
-function StepProgress({ step }: { step: number }) {
-  const theme = useTheme();
-  return (
-    <View style={styles.progress} accessibilityLabel={`Step ${step + 1} of 3`}>
-      <View style={styles.progressBars}>
-        {[0, 1, 2].map((index) => (
-          <View
-            key={index}
-            style={[
-              styles.progressBar,
-              { backgroundColor: index <= step ? theme.accent : theme.border },
-            ]}
-          />
-        ))}
-      </View>
-      <ThemedText type="label" themeColor="textSecondary">
-        STEP {step + 1} OF 3
-      </ThemedText>
     </View>
   );
 }
@@ -723,7 +642,7 @@ export default function QuoteScreen() {
 
           <View style={styles.header}>
             {inForm && step !== REVIEW && !revising ? (
-              <StepProgress step={step} />
+              <StepProgress step={step} total={3} />
             ) : (
               <ThemedText type="label" themeColor="textSecondary">
                 {revisingId ? "SELL COCOA · CHANGE QUOTE" : "SELL COCOA"}
@@ -1027,9 +946,6 @@ const styles = StyleSheet.create({
   header: { gap: Space.two },
   topline: { flexDirection: "row", alignItems: "center" },
   backButton: { paddingVertical: Space.two, paddingRight: Space.four },
-  progress: { gap: Space.two },
-  progressBars: { flexDirection: "row", gap: Space.one },
-  progressBar: { flex: 1, height: 4, borderRadius: 2 },
   formCard: { gap: Space.four, padding: Space.four },
   field: { gap: Space.two },
   labelRow: {
@@ -1047,14 +963,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Space.two,
     borderWidth: 1,
     borderRadius: Radius.control,
-  },
-  input: {
-    minHeight: 54,
-    paddingHorizontal: Space.three,
-    borderWidth: 1,
-    borderRadius: Radius.control,
-    fontFamily: Fonts.sans,
-    fontSize: 17,
   },
   reviewSection: {
     gap: Space.one,

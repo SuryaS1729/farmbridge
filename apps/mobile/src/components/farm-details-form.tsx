@@ -21,9 +21,48 @@ import {
 
 const ACRES_PATTERN = /^\d{1,6}(?:\.\d{1,2})?$/;
 
-type FarmField = "aadhaarName" | "village" | "mandal" | "farmSizeAcres" | "cocoaTreeCount";
+export type FarmField = "aadhaarName" | "village" | "mandal" | "farmSizeAcres" | "cocoaTreeCount";
 
-function formatPhone(phone: string | null | undefined) {
+/** The farm details as typed, before trimming. Shared by onboarding and Profile. */
+export type FarmDetailsValues = Record<FarmField, string>;
+
+/** Every problem at once, in on-screen order. Mirrors the API rules. */
+export function validateFarmDetails(values: FarmDetailsValues): FieldErrors<FarmField> {
+  const errors: FieldErrors<FarmField> = {};
+  if (values.aadhaarName.trim().length < 2) errors.aadhaarName = "Enter your name as on Aadhaar.";
+  if (values.village.trim().length < 2) errors.village = "Enter your village name.";
+  if (values.mandal.trim().length < 2) errors.mandal = "Enter your mandal name.";
+  if (!ACRES_PATTERN.test(values.farmSizeAcres) || Number(values.farmSizeAcres) <= 0) {
+    errors.farmSizeAcres = "Enter the farm size in acres, for example 2.5.";
+  }
+  if (!/^\d+$/.test(values.cocoaTreeCount) || Number(values.cocoaTreeCount) <= 0) {
+    errors.cocoaTreeCount = "Enter the number of cocoa trees.";
+  }
+  return errors;
+}
+
+/** Saves the profile and writes it to the shared cache, which also opens the app after onboarding. */
+export function useSaveFarmDetails() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (values: FarmDetailsValues) =>
+      saveFarmerProfile({
+        aadhaarName: values.aadhaarName.trim(),
+        village: values.village.trim(),
+        mandal: values.mandal.trim(),
+        farmSizeAcres: values.farmSizeAcres,
+        cocoaTreeCount: Number(values.cocoaTreeCount),
+      }),
+    // Every screen reading the profile (and the onboarding gate in _layout) updates at once.
+    onSuccess: (result) => queryClient.setQueryData(profileQuery.queryKey, result),
+  });
+}
+
+/** Digits only, so a pasted "2,5" or "450 trees" can't sneak in. */
+export const onlyAcres = (text: string) => text.replace(/[^\d.]/g, "");
+export const onlyDigits = (text: string) => text.replace(/\D/g, "");
+
+export function formatPhone(phone: string | null | undefined) {
   if (!phone) return "";
   const digits = phone.replace(/\D/g, "").slice(-10);
   return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
@@ -52,12 +91,7 @@ export function FarmDetailsForm({
   /** The screen's ScrollView, so a failed submit can scroll to the first problem. */
   scrollRef: RefObject<ScrollView | null>;
 }) {
-  const queryClient = useQueryClient();
-  const saveMutation = useMutation({
-    mutationFn: saveFarmerProfile,
-    // Every screen reading the profile (and the onboarding gate in _layout) updates at once.
-    onSuccess: (result) => queryClient.setQueryData(profileQuery.queryKey, result),
-  });
+  const saveMutation = useSaveFarmDetails();
   const saving = saveMutation.isPending;
   const theme = useTheme();
   const [aadhaarName, setAadhaarName] = useState(initial?.aadhaarName ?? "");
@@ -72,20 +106,7 @@ export function FarmDetailsForm({
   const [fieldErrors, setFieldErrors] = useState<FieldErrors<FarmField>>({});
   const { fieldRef, scrollToFirst } = useScrollToField(scrollRef);
 
-  /** Every problem at once, in on-screen order. */
-  function validate(): FieldErrors<FarmField> {
-    const errors: FieldErrors<FarmField> = {};
-    if (aadhaarName.trim().length < 2) errors.aadhaarName = "Enter your name as on Aadhaar.";
-    if (village.trim().length < 2) errors.village = "Enter your village name.";
-    if (mandal.trim().length < 2) errors.mandal = "Enter your mandal name.";
-    if (!ACRES_PATTERN.test(farmSizeAcres) || Number(farmSizeAcres) <= 0) {
-      errors.farmSizeAcres = "Enter the farm size in acres, for example 2.5.";
-    }
-    if (!/^\d+$/.test(cocoaTreeCount) || Number(cocoaTreeCount) <= 0) {
-      errors.cocoaTreeCount = "Enter the number of cocoa trees.";
-    }
-    return errors;
-  }
+  const values: FarmDetailsValues = { aadhaarName, village, mandal, farmSizeAcres, cocoaTreeCount };
 
   /** Updates a field and clears its error, since the farmer is fixing it. */
   function change(field: FarmField, set: (value: string) => void) {
@@ -96,7 +117,7 @@ export function FarmDetailsForm({
   }
 
   async function submit() {
-    const problems = validate();
+    const problems = validateFarmDetails(values);
     setFieldErrors(problems);
     setError(null);
     if (hasErrors(problems)) {
@@ -105,13 +126,7 @@ export function FarmDetailsForm({
     }
 
     try {
-      const result = await saveMutation.mutateAsync({
-        aadhaarName: aadhaarName.trim(),
-        village: village.trim(),
-        mandal: mandal.trim(),
-        farmSizeAcres,
-        cocoaTreeCount: Number(cocoaTreeCount),
-      });
+      const result = await saveMutation.mutateAsync(values);
       if (result.profile) onSaved?.(result.profile);
     } catch (saveError) {
       setError(actionErrorMessage(saveError, "Could not save your details. Try again."));
@@ -188,7 +203,7 @@ export function FarmDetailsForm({
               {...sharedProps}
               style={inputStyle("farmSizeAcres")}
               value={farmSizeAcres}
-              onChangeText={change("farmSizeAcres", (text) => setFarmSizeAcres(text.replace(/[^\d.]/g, "")))}
+              onChangeText={change("farmSizeAcres", (text) => setFarmSizeAcres(onlyAcres(text)))}
               placeholder="2.5"
               keyboardType="decimal-pad"
               maxLength={9}
@@ -201,7 +216,7 @@ export function FarmDetailsForm({
               {...sharedProps}
               style={inputStyle("cocoaTreeCount")}
               value={cocoaTreeCount}
-              onChangeText={change("cocoaTreeCount", (text) => setCocoaTreeCount(text.replace(/\D/g, "")))}
+              onChangeText={change("cocoaTreeCount", (text) => setCocoaTreeCount(onlyDigits(text)))}
               placeholder="450"
               keyboardType="number-pad"
               maxLength={8}
