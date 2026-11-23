@@ -1,5 +1,6 @@
 import { StyleSheet, TextInput, View } from "react-native";
 
+import { FieldError, type FieldErrors } from "@/components/form-errors";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Space } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
@@ -7,15 +8,18 @@ import type { AddressInput } from "@/lib/farmbridge-api";
 
 export const emptyAddress: AddressInput = { label: "Home", address: "" };
 
-/** Mirrors the API rules so farmers see problems before sending. */
-export function validateAddress(input: AddressInput): string | null {
+export type AddressFieldErrors = FieldErrors<keyof AddressInput>;
+
+/** Mirrors the API rules so farmers see problems before sending. One message per field. */
+export function validateAddress(input: AddressInput): AddressFieldErrors {
   const label = input.label.trim();
   const address = input.address.trim();
-  if (label.length < 1) return "Give this address a short name, like Home.";
-  if (label.length > 40) return "Keep the address name to 40 characters or fewer.";
-  if (address.length < 5) return "Enter the address with a landmark, at least 5 characters.";
-  if (address.length > 500) return "Keep the address to 500 characters or fewer.";
-  return null;
+  const errors: AddressFieldErrors = {};
+  if (label.length < 1) errors.label = "Give this address a short name, like Home.";
+  else if (label.length > 40) errors.label = "Keep the address name to 40 characters or fewer.";
+  if (address.length < 5) errors.address = "Enter the address with a landmark, at least 5 characters.";
+  else if (address.length > 500) errors.address = "Keep the address to 500 characters or fewer.";
+  return errors;
 }
 
 export function trimAddress(input: AddressInput): AddressInput {
@@ -26,10 +30,13 @@ export function AddressFields({
   value,
   onChange,
   disabled = false,
+  errors = {},
 }: {
   value: AddressInput;
-  onChange: (value: AddressInput) => void;
+  /** Also receives which field changed, so the caller can clear that field's error. */
+  onChange: (value: AddressInput, changed: keyof AddressInput) => void;
   disabled?: boolean;
+  errors?: AddressFieldErrors;
 }) {
   const theme = useTheme();
   const inputColors = {
@@ -46,14 +53,15 @@ export function AddressFields({
         </ThemedText>
         <TextInput
           value={value.label}
-          onChangeText={(label) => onChange({ ...value, label })}
+          onChangeText={(label) => onChange({ ...value, label }, "label")}
           placeholder="Home, Drying yard, Farm…"
           placeholderTextColor={theme.textSecondary}
           maxLength={40}
           editable={!disabled}
-          style={[styles.input, inputColors]}
+          style={[styles.input, inputColors, errors.label ? { borderColor: theme.danger } : null]}
           accessibilityLabel="Address name"
         />
+        <FieldError message={errors.label} />
       </View>
       <View style={styles.field}>
         <ThemedText type="label" themeColor="textSecondary">
@@ -61,16 +69,22 @@ export function AddressFields({
         </ThemedText>
         <TextInput
           value={value.address}
-          onChangeText={(address) => onChange({ ...value, address })}
+          onChangeText={(address) => onChange({ ...value, address }, "address")}
           placeholder="Village, landmark, and directions the driver can follow"
           placeholderTextColor={theme.textSecondary}
           multiline
           textAlignVertical="top"
           maxLength={500}
           editable={!disabled}
-          style={[styles.input, styles.multiline, inputColors]}
+          style={[
+            styles.input,
+            styles.multiline,
+            inputColors,
+            errors.address ? { borderColor: theme.danger } : null,
+          ]}
           accessibilityLabel="Pickup address"
         />
+        <FieldError message={errors.address} />
       </View>
     </View>
   );

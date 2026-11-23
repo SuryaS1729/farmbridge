@@ -1,7 +1,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
-import { StyleSheet, TextInput, View, type TextInputProps } from "react-native";
+import { useState, type ReactNode, type RefObject } from "react";
+import { StyleSheet, TextInput, View, type ScrollView, type TextInputProps } from "react-native";
 
+import {
+  FieldError,
+  FormError,
+  hasErrors,
+  useScrollToField,
+  type FieldErrors,
+} from "@/components/form-errors";
 import { Button } from "@/components/ui/button";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Space } from "@/constants/theme";
@@ -13,6 +20,8 @@ import {
 } from "@/lib/farmbridge-api";
 
 const ACRES_PATTERN = /^\d{1,6}(?:\.\d{1,2})?$/;
+
+type FarmField = "aadhaarName" | "village" | "mandal" | "farmSizeAcres" | "cocoaTreeCount";
 
 function formatPhone(phone: string | null | undefined) {
   if (!phone) return "";
@@ -33,12 +42,15 @@ export function FarmDetailsForm({
   phoneNumber,
   submitLabel,
   onSaved,
+  scrollRef,
 }: {
   initial?: FarmerProfile | null;
   phoneNumber: string | null | undefined;
   submitLabel: string;
   /** Optional: the saved profile is already written to the shared query cache. */
   onSaved?: (profile: FarmerProfile) => void;
+  /** The screen's ScrollView, so a failed submit can scroll to the first problem. */
+  scrollRef: RefObject<ScrollView | null>;
 }) {
   const queryClient = useQueryClient();
   const saveMutation = useMutation({
@@ -55,29 +67,42 @@ export function FarmDetailsForm({
   const [cocoaTreeCount, setCocoaTreeCount] = useState(
     initial?.cocoaTreeCount ? String(initial.cocoaTreeCount) : "",
   );
+  // A failed save; field problems are shown under each field instead.
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors<FarmField>>({});
+  const { fieldRef, scrollToFirst } = useScrollToField(scrollRef);
 
-  function validate(): string | null {
-    if (aadhaarName.trim().length < 2) return "Enter your name as on Aadhaar.";
-    if (village.trim().length < 2) return "Enter your village name.";
-    if (mandal.trim().length < 2) return "Enter your mandal name.";
+  /** Every problem at once, in on-screen order. */
+  function validate(): FieldErrors<FarmField> {
+    const errors: FieldErrors<FarmField> = {};
+    if (aadhaarName.trim().length < 2) errors.aadhaarName = "Enter your name as on Aadhaar.";
+    if (village.trim().length < 2) errors.village = "Enter your village name.";
+    if (mandal.trim().length < 2) errors.mandal = "Enter your mandal name.";
     if (!ACRES_PATTERN.test(farmSizeAcres) || Number(farmSizeAcres) <= 0) {
-      return "Enter the cocoa farm size in acres, for example 2.5.";
+      errors.farmSizeAcres = "Enter the farm size in acres, for example 2.5.";
     }
     if (!/^\d+$/.test(cocoaTreeCount) || Number(cocoaTreeCount) <= 0) {
-      return "Enter the total number of cocoa trees.";
+      errors.cocoaTreeCount = "Enter the number of cocoa trees.";
     }
-    return null;
+    return errors;
+  }
+
+  /** Updates a field and clears its error, since the farmer is fixing it. */
+  function change(field: FarmField, set: (value: string) => void) {
+    return (value: string) => {
+      set(value);
+      setFieldErrors((current) => ({ ...current, [field]: undefined }));
+    };
   }
 
   async function submit() {
-    const problem = validate();
-    if (problem) {
-      setError(problem);
+    const problems = validate();
+    setFieldErrors(problems);
+    setError(null);
+    if (hasErrors(problems)) {
+      scrollToFirst(problems);
       return;
     }
-
-    setError(null);
 
     try {
       const result = await saveMutation.mutateAsync({
@@ -93,12 +118,12 @@ export function FarmDetailsForm({
     }
   }
 
-  const inputStyle = [
+  const inputStyle = (field: FarmField) => [
     styles.input,
     {
       color: theme.text,
       backgroundColor: theme.backgroundElement,
-      borderColor: theme.border,
+      borderColor: fieldErrors[field] ? theme.danger : theme.border,
     },
   ];
 
@@ -109,12 +134,12 @@ export function FarmDetailsForm({
 
   return (
     <View style={styles.form}>
-      <Field label="NAME (AS ON AADHAAR CARD)">
+      <Field label="NAME (AS ON AADHAAR CARD)" error={fieldErrors.aadhaarName} fieldRef={fieldRef("aadhaarName")}>
         <TextInput
           {...sharedProps}
-          style={inputStyle}
+          style={inputStyle("aadhaarName")}
           value={aadhaarName}
-          onChangeText={setAadhaarName}
+          onChangeText={change("aadhaarName", setAadhaarName)}
           placeholder="e.g. Kollu Venkata Rao"
           autoCapitalize="words"
           autoComplete="name"
@@ -132,24 +157,24 @@ export function FarmDetailsForm({
         </View>
       </Field>
 
-      <Field label="VILLAGE">
+      <Field label="VILLAGE" error={fieldErrors.village} fieldRef={fieldRef("village")}>
         <TextInput
           {...sharedProps}
-          style={inputStyle}
+          style={inputStyle("village")}
           value={village}
-          onChangeText={setVillage}
+          onChangeText={change("village", setVillage)}
           placeholder="Village name"
           autoCapitalize="words"
           maxLength={80}
         />
       </Field>
 
-      <Field label="MANDAL">
+      <Field label="MANDAL" error={fieldErrors.mandal} fieldRef={fieldRef("mandal")}>
         <TextInput
           {...sharedProps}
-          style={inputStyle}
+          style={inputStyle("mandal")}
           value={mandal}
-          onChangeText={setMandal}
+          onChangeText={change("mandal", setMandal)}
           placeholder="Mandal name"
           autoCapitalize="words"
           maxLength={80}
@@ -158,12 +183,12 @@ export function FarmDetailsForm({
 
       <View style={styles.row}>
         <View style={styles.rowItem}>
-          <Field label="COCOA FARM SIZE (ACRES)">
+          <Field label="COCOA FARM SIZE (ACRES)" error={fieldErrors.farmSizeAcres} fieldRef={fieldRef("farmSizeAcres")}>
             <TextInput
               {...sharedProps}
-              style={inputStyle}
+              style={inputStyle("farmSizeAcres")}
               value={farmSizeAcres}
-              onChangeText={(text) => setFarmSizeAcres(text.replace(/[^\d.]/g, ""))}
+              onChangeText={change("farmSizeAcres", (text) => setFarmSizeAcres(text.replace(/[^\d.]/g, "")))}
               placeholder="2.5"
               keyboardType="decimal-pad"
               maxLength={9}
@@ -171,12 +196,12 @@ export function FarmDetailsForm({
           </Field>
         </View>
         <View style={styles.rowItem}>
-          <Field label="TOTAL COCOA TREES">
+          <Field label="TOTAL COCOA TREES" error={fieldErrors.cocoaTreeCount} fieldRef={fieldRef("cocoaTreeCount")}>
             <TextInput
               {...sharedProps}
-              style={inputStyle}
+              style={inputStyle("cocoaTreeCount")}
               value={cocoaTreeCount}
-              onChangeText={(text) => setCocoaTreeCount(text.replace(/\D/g, ""))}
+              onChangeText={change("cocoaTreeCount", (text) => setCocoaTreeCount(text.replace(/\D/g, "")))}
               placeholder="450"
               keyboardType="number-pad"
               maxLength={8}
@@ -185,24 +210,30 @@ export function FarmDetailsForm({
         </View>
       </View>
 
+      <FormError message={error} />
       <Button label={submitLabel} onPress={submit} loading={saving} />
-
-      {error ? (
-        <ThemedText type="small" themeColor="textSecondary">
-          {error}
-        </ThemedText>
-      ) : null}
     </View>
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({
+  label,
+  error,
+  fieldRef,
+  children,
+}: {
+  label: string;
+  error?: string;
+  fieldRef?: (node: View | null) => void;
+  children: ReactNode;
+}) {
   return (
-    <View style={styles.field}>
+    <View ref={fieldRef} style={styles.field}>
       <ThemedText type="label" themeColor="textSecondary">
         {label}
       </ThemedText>
       {children}
+      <FieldError message={error} />
     </View>
   );
 }

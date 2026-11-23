@@ -9,6 +9,7 @@ import {
 import { OtpInput } from "react-native-otp-entry";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { FieldError } from "@/components/form-errors";
 import { Button } from "@/components/ui/button";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -155,7 +156,10 @@ export default function SignInScreen() {
                 type="numeric"
                 autoFocus
                 disabled={verifying}
-                onTextChange={setCode}
+                onTextChange={(text) => {
+                  setCode(text);
+                  setError(null);
+                }}
                 focusColor={theme.text}
                 theme={{
                   containerStyle: styles.otpContainer,
@@ -174,6 +178,7 @@ export default function SignInScreen() {
                   focusStickStyle: { backgroundColor: theme.text },
                 }}
               />
+              <FieldError message={error} />
 
               <Button
                 label="Verify and continue  →"
@@ -203,7 +208,7 @@ export default function SignInScreen() {
                   styles.phoneRow,
                   {
                     backgroundColor: theme.backgroundElement,
-                    borderColor: theme.border,
+                    borderColor: error ? theme.danger : theme.border,
                   },
                 ]}
               >
@@ -217,11 +222,12 @@ export default function SignInScreen() {
                 <TextInput
                   style={[styles.phoneInput, { color: theme.text }]}
                   value={phoneDigits}
-                  onChangeText={(text) =>
+                  onChangeText={(text) => {
                     setPhoneDigits(
                       text.replace(/\D/g, "").slice(0, PHONE_LENGTH),
-                    )
-                  }
+                    );
+                    setError(null);
+                  }}
                   placeholder="98765 43210"
                   placeholderTextColor={theme.textSecondary}
                   keyboardType="number-pad"
@@ -229,6 +235,7 @@ export default function SignInScreen() {
                   autoComplete="tel"
                 />
               </View>
+              <FieldError message={error} />
 
               <Button
                 label="Send code  →"
@@ -246,11 +253,6 @@ export default function SignInScreen() {
             </View>
           )}
 
-          {error ? (
-            <ThemedText type="small" themeColor="textSecondary">
-              {error}
-            </ThemedText>
-          ) : null}
         </View>
       </ScrollView>
     </ThemedView>

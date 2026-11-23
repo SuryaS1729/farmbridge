@@ -6,6 +6,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { useRef } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { FarmDetailsForm } from "@/components/farm-details-form";
@@ -16,6 +17,7 @@ import { authClient } from "@/lib/auth-client";
 
 export default function FarmDetailsScreen() {
   const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ScrollView>(null);
   const { data: session } = authClient.useSession();
   const phoneNumber = (session?.user as { phoneNumber?: string | null } | undefined)
     ?.phoneNumber;
@@ -27,6 +29,7 @@ export default function FarmDetailsScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={[
             styles.scrollContent,
             {
@@ -59,6 +62,7 @@ export default function FarmDetailsScreen() {
 
             <FarmDetailsForm
               phoneNumber={phoneNumber}
+              scrollRef={scrollRef}
               submitLabel="Save and continue  →"
             />
 

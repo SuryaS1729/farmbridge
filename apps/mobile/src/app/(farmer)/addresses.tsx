@@ -18,7 +18,9 @@ import {
   emptyAddress,
   trimAddress,
   validateAddress,
+  type AddressFieldErrors,
 } from "@/components/address-fields";
+import { FormError, hasErrors } from "@/components/form-errors";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
@@ -47,7 +49,9 @@ export default function AddressesScreen() {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<Editing>(null);
+  // A failed save, default or delete; field problems are shown under each field instead.
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<AddressFieldErrors>({});
 
   // Shared with Profile, Quote and My Quotes: an edit here shows up everywhere.
   const addressResult = useQuery(addressesQuery);
@@ -80,11 +84,9 @@ export default function AddressesScreen() {
 
   async function saveEditing() {
     if (!editing) return;
-    const problem = validateAddress(editing.value);
-    if (problem) {
-      setError(problem);
-      return;
-    }
+    const problems = validateAddress(editing.value);
+    setFieldErrors(problems);
+    if (hasErrors(problems)) return;
     const input = trimAddress(editing.value);
     const ok = await run(editing.id, () =>
       editing.id === "new" ? createAddress(input) : updateAddress(editing.id, input),
@@ -111,9 +113,14 @@ export default function AddressesScreen() {
     <View style={styles.formBox}>
       <AddressFields
         value={editing.value}
-        onChange={(value) => setEditing({ ...editing, value })}
+        onChange={(value, changed) => {
+          setEditing({ ...editing, value });
+          setFieldErrors((current) => ({ ...current, [changed]: undefined }));
+        }}
         disabled={busyId !== null}
+        errors={fieldErrors}
       />
+      <FormError message={error} />
       <View style={styles.formActions}>
         <Button
           label="Cancel"
@@ -123,6 +130,7 @@ export default function AddressesScreen() {
           onPress={() => {
             setEditing(null);
             setError(null);
+            setFieldErrors({});
           }}
         />
         <Button
@@ -233,6 +241,7 @@ export default function AddressesScreen() {
                                 disabled={locked}
                                 onPress={() => {
                                   setError(null);
+                                  setFieldErrors({});
                                   setEditing({
                                     id: address.id,
                                     value: { label: address.label, address: address.address },
@@ -271,6 +280,7 @@ export default function AddressesScreen() {
                   disabled={locked}
                   onPress={() => {
                     setError(null);
+                    setFieldErrors({});
                     setEditing({
                       id: "new",
                       value: addresses.length === 0 ? emptyAddress : { label: "", address: "" },
@@ -279,11 +289,8 @@ export default function AddressesScreen() {
                 />
               ) : null}
 
-              {error ? (
-                <ThemedText type="small" style={styles.error}>
-                  {error}
-                </ThemedText>
-              ) : null}
+              {/* While a form is open its own errors show above its buttons. */}
+              {editing ? null : <FormError message={error} />}
             </View>
           )}
         </ScrollView>
@@ -346,5 +353,4 @@ const styles = StyleSheet.create({
   formBox: { gap: Space.four },
   formActions: { flexDirection: "row", gap: Space.three },
   flex: { flex: 1 },
-  error: { color: "#9A4237" },
 });

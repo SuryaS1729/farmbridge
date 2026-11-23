@@ -5,6 +5,7 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AddressPicker } from "@/components/address-picker";
+import { FieldError } from "@/components/form-errors";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ThemedText } from "@/components/themed-text";
@@ -208,12 +209,12 @@ export default function MyQuotesScreen() {
               const statusColor = quote.status === "accepted"
                 ? theme.accentText
                 : quote.status === "rejected"
-                  ? "#9A4237"
+                  ? theme.danger
                   : theme.textSecondary;
               const statusBackground = quote.status === "accepted"
                 ? theme.accent
                 : quote.status === "rejected"
-                  ? "#FFF0ED"
+                  ? theme.dangerSoft
                   : theme.backgroundSelected;
 
               return (
@@ -367,7 +368,7 @@ export default function MyQuotesScreen() {
                           )}
 
                           {pickupLocationError && changingDealId === quote.dealId ? (
-                            <ThemedText type="small" style={styles.pickupError}>{pickupLocationError}</ThemedText>
+                            <FieldError message={pickupLocationError} />
                           ) : pickupLocationNotice === quote.dealId ? (
                             <ThemedText type="small" themeColor="textSecondary">
                               Pickup address updated. The admin team will send the driver there.
@@ -448,7 +449,6 @@ const styles = StyleSheet.create({
   },
   pickupActions: { flexDirection: "row", gap: Space.three },
   flex: { flex: 1 },
-  pickupError: { color: "#9A4237" },
   collectedLocation: { gap: Space.one },
   state: { flex: 1, minHeight: 180, alignItems: "center", justifyContent: "center", gap: Space.three },
   stateCard: { gap: Space.three },

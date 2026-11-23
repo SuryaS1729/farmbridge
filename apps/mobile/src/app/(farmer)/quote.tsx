@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -18,6 +18,13 @@ import {
   validateAddress,
 } from "@/components/address-fields";
 import { AddressPicker, NEW_ADDRESS } from "@/components/address-picker";
+import {
+  FieldError,
+  FormError,
+  hasErrors,
+  useScrollToField,
+  type FieldErrors,
+} from "@/components/form-errors";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ThemedText } from "@/components/themed-text";
@@ -63,6 +70,9 @@ const emptyFields: QuoteFields = {
 
 type QuantityUnit = "kg" | "quintal";
 
+/** The form's fields in on-screen order, plus the pickup address parts. */
+type QuoteErrorKey = keyof QuoteFields | "pickupAddress" | "addressLabel" | "addressText";
+
 /**
  * The saved quote as form values. Quantity is stored in kg, so it is shown in quintals
  * when that is exact to two decimals (as the form accepts), and in kg otherwise.
@@ -98,17 +108,21 @@ function InputField({
   onChangeText,
   placeholder,
   keyboardType,
+  error,
+  fieldRef,
 }: {
   label: string;
   value: string;
   onChangeText: (value: string) => void;
   placeholder: string;
   keyboardType?: "decimal-pad" | "number-pad" | "default";
+  error?: string;
+  fieldRef?: (node: View | null) => void;
 }) {
   const theme = useTheme();
 
   return (
-    <View style={styles.field}>
+    <View ref={fieldRef} style={styles.field}>
       <ThemedText type="label" themeColor="textSecondary">
         {label}
       </ThemedText>
@@ -123,11 +137,12 @@ function InputField({
           {
             color: theme.text,
             backgroundColor: theme.backgroundElement,
-            borderColor: theme.border,
+            borderColor: error ? theme.danger : theme.border,
           },
         ]}
         accessibilityLabel={label}
       />
+      <FieldError message={error} />
     </View>
   );
 }
@@ -151,7 +166,11 @@ export default function QuoteScreen() {
   const [quantityUnit, setQuantityUnit] = useState<QuantityUnit>("quintal");
   const [reviewing, setReviewing] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  // A refused submit or lost connection; field problems are shown under each field instead.
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors<QuoteErrorKey>>({});
+  const scrollRef = useRef<ScrollView>(null);
+  const { fieldRef, scrollToFirst } = useScrollToField(scrollRef);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [newAddress, setNewAddress] = useState<AddressInput>(emptyAddress);
 
@@ -234,53 +253,63 @@ export default function QuoteScreen() {
       ? `${selectedAddress.label} — ${selectedAddress.address}`
       : "";
 
+  /** Updates a field and clears its error, since the farmer is fixing it. */
   function setField<K extends keyof QuoteFields>(key: K, value: QuoteFields[K]) {
     setFields((current) => ({ ...current, [key]: value }));
+    setFieldErrors((current) => ({ ...current, [key]: undefined }));
   }
 
-  function reviewQuote() {
-    setError(null);
+  /** Every problem at once, in on-screen order, so the farmer can fix them in one pass. */
+  function validate(): FieldErrors<QuoteErrorKey> {
+    const errors: FieldErrors<QuoteErrorKey> = {};
 
     if (!/^\d{1,10}(?:\.\d{1,2})?$/.test(fields.offeredPricePerKg)) {
-      setError("Enter your offer price with up to two decimal places.");
-      return;
+      errors.offeredPricePerKg = "Enter your offer price in rupees, for example 250 or 250.50.";
+    } else if (price && Number(fields.offeredPricePerKg) < Number(price.basePricePerKg)) {
+      // The server checks this too; catching it here saves a round trip and a confusing late error.
+      errors.offeredPricePerKg = `Your offer must be at least today's base price of ₹${formatPricePerKg(price.basePricePerKg)} per kg.`;
     }
     const quantityPattern =
       quantityUnit === "quintal"
         ? /^\d{1,7}(?:\.\d{1,2})?$/
         : /^\d{1,9}(?:\.\d{1,3})?$/;
     if (!quantityPattern.test(fields.quantity) || Number(fields.quantity) <= 0) {
-      setError(
+      errors.quantity =
         quantityUnit === "quintal"
-          ? "Enter a quantity greater than zero, to two decimal places."
-          : "Enter a kg quantity greater than zero, to three decimal places.",
-      );
-      return;
+          ? "Enter how many quintals, for example 2.5."
+          : "Enter how many kg, for example 250.";
     }
     const moisture = Number(fields.moisturePercent);
     if (fields.moisturePercent.trim() === "" || !Number.isFinite(moisture) || moisture < 0 || moisture > 100) {
-      setError("Enter moisture as a percentage from 0 to 100.");
-      return;
+      errors.moisturePercent = "Enter moisture as a percentage from 0 to 100, for example 7.5.";
     }
     const beanCount = Number(fields.beanCountPer100g);
     if (fields.beanCountPer100g.trim() === "" || !Number.isFinite(beanCount) || beanCount <= 0) {
-      setError("Enter a bean count greater than zero per 100 g.");
-      return;
+      errors.beanCountPer100g = "Enter how many beans are in 100 g, for example 110.";
     }
     if (!indianDateToIso(fields.readyOn)) {
-      setError("Enter the expected pickup readiness date as DD-MM-YYYY.");
-      return;
+      errors.readyOn = "Enter the date as DD-MM-YYYY, for example 05-12-2026.";
     }
     if (usingNewAddress) {
-      const addressProblem = validateAddress(newAddress);
-      if (addressProblem) {
-        setError(addressProblem);
-        return;
-      }
+      const addressErrors = validateAddress(newAddress);
+      errors.addressLabel = addressErrors.label;
+      errors.addressText = addressErrors.address;
     } else if (!selectedAddress) {
-      setError("Choose where the driver should collect your cocoa.");
+      errors.pickupAddress = "Choose where the driver should collect your cocoa.";
+    }
+    return errors;
+  }
+
+  function reviewQuote() {
+    setError(null);
+    const problems = validate();
+    setFieldErrors(problems);
+    if (hasErrors(problems)) {
+      scrollToFirst(problems);
       return;
     }
+    const moisture = Number(fields.moisturePercent);
+    const beanCount = Number(fields.beanCountPer100g);
 
     posthog?.capture(revisingId ? "quote_revision_review_started" : "quote_review_started", {
       offered_price_per_kg: Number(fields.offeredPricePerKg),
@@ -343,6 +372,7 @@ export default function QuoteScreen() {
   return (
     <ThemedView style={styles.screen}>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[
           styles.content,
           {
@@ -413,8 +443,10 @@ export default function QuoteScreen() {
                 ? "Your changes are saved. The buying team will see the new details when they review your quote."
                 : "You can return to Home. The buying team will review your price, quantity, quality details, ready date, and pickup address."}
             </ThemedText>
-            <Button label="View my quotes" variant="outline" onPress={() => router.replace("./my-quotes")} />
-            <Button label="Back to Home" onPress={() => router.replace("/(farmer)/(tabs)")} />
+            {/* dismissTo goes back to a My Quotes or Home already in the stack (e.g. a revise
+                started from My Quotes) instead of stacking a second copy on top. */}
+            <Button label="View my quotes" variant="outline" onPress={() => router.dismissTo("/my-quotes")} />
+            <Button label="Back to Home" onPress={() => router.dismissTo("/(farmer)/(tabs)")} />
           </Card>
         ) : waitingForQuote ? (
           <Card style={styles.formCard}>
@@ -429,7 +461,7 @@ export default function QuoteScreen() {
             <ThemedText>
               The buying team has already decided on it, or it expired at the end of the day. Check My quotes for its status.
             </ThemedText>
-            <Button label="View my quotes" onPress={() => router.replace("./my-quotes")} />
+            <Button label="View my quotes" onPress={() => router.dismissTo("/my-quotes")} />
           </Card>
         ) : openQuote ? (
           <Card style={styles.formCard}>
@@ -471,7 +503,15 @@ export default function QuoteScreen() {
             <ThemedText themeColor="textSecondary">
               Moisture and bean count are self-reported. The administrator reviews these details before deciding whether to accept the quote.
             </ThemedText>
-            <Button label="Edit details" variant="outline" onPress={() => setReviewing(false)} />
+            <FormError message={error} />
+            <Button
+              label="Edit details"
+              variant="outline"
+              onPress={() => {
+                setReviewing(false);
+                setError(null);
+              }}
+            />
             <Button
               label={revisingId ? "Save changes" : "Submit quote"}
               onPress={confirmSubmission}
@@ -491,6 +531,8 @@ export default function QuoteScreen() {
             ) : null}
             <InputField
               label="OFFER PRICE PER KG (₹)"
+              error={fieldErrors.offeredPricePerKg}
+              fieldRef={fieldRef("offeredPricePerKg")}
               value={fields.offeredPricePerKg}
               onChangeText={(value) => setField("offeredPricePerKg", value)}
               placeholder="e.g. 250.00"
@@ -532,6 +574,8 @@ export default function QuoteScreen() {
               </View>
               <InputField
                 label={quantityUnit === "quintal" ? "QUANTITY (QUINTALS)" : "QUANTITY (KG)"}
+                error={fieldErrors.quantity}
+                fieldRef={fieldRef("quantity")}
                 value={fields.quantity}
                 onChangeText={(value) => setField("quantity", value)}
                 placeholder={quantityUnit === "quintal" ? "e.g. 2.50" : "e.g. 250"}
@@ -545,6 +589,8 @@ export default function QuoteScreen() {
             </ThemedText>
             <InputField
               label="BEAN MOISTURE (%)"
+              error={fieldErrors.moisturePercent}
+              fieldRef={fieldRef("moisturePercent")}
               value={fields.moisturePercent}
               onChangeText={(value) => setField("moisturePercent", value)}
               placeholder="e.g. 7.5"
@@ -552,6 +598,8 @@ export default function QuoteScreen() {
             />
             <InputField
               label="BEAN COUNT PER 100 G"
+              error={fieldErrors.beanCountPer100g}
+              fieldRef={fieldRef("beanCountPer100g")}
               value={fields.beanCountPer100g}
               onChangeText={(value) => setField("beanCountPer100g", value)}
               placeholder="e.g. 110"
@@ -559,12 +607,14 @@ export default function QuoteScreen() {
             />
             <InputField
               label="EXPECTED READY DATE FOR PICKUP (DD-MM-YYYY)"
+              error={fieldErrors.readyOn}
+              fieldRef={fieldRef("readyOn")}
               value={fields.readyOn}
               onChangeText={(value) => setField("readyOn", value)}
               placeholder="DD-MM-YYYY"
               keyboardType="default"
             />
-            <View style={styles.field}>
+            <View ref={fieldRef("pickupAddress")} style={styles.field}>
               <ThemedText type="label" themeColor="textSecondary">
                 PICKUP ADDRESS
               </ThemedText>
@@ -583,7 +633,12 @@ export default function QuoteScreen() {
                       selectedId={selectedAddressId}
                       onSelect={(id) => {
                         setSelectedAddressId(id);
-                        setError(null);
+                        setFieldErrors((current) => ({
+                          ...current,
+                          pickupAddress: undefined,
+                          addressLabel: undefined,
+                          addressText: undefined,
+                        }));
                       }}
                       allowNew
                     />
@@ -592,8 +647,25 @@ export default function QuoteScreen() {
                       Where should the driver collect your cocoa? We'll save this address for your next quote.
                     </ThemedText>
                   )}
+                  <FieldError message={fieldErrors.pickupAddress} />
                   {usingNewAddress ? (
-                    <AddressFields value={newAddress} onChange={setNewAddress} />
+                    // The scroll target for a problem in the new address's name or text.
+                    <View
+                      ref={(node) => {
+                        fieldRef("addressLabel")(node);
+                        fieldRef("addressText")(node);
+                      }}
+                    >
+                      <AddressFields
+                        value={newAddress}
+                        onChange={(value, changed) => {
+                          setNewAddress(value);
+                          const key = changed === "label" ? "addressLabel" : "addressText";
+                          setFieldErrors((current) => ({ ...current, [key]: undefined }));
+                        }}
+                        errors={{ label: fieldErrors.addressLabel, address: fieldErrors.addressText }}
+                      />
+                    </View>
                   ) : null}
                 </>
               )}
@@ -601,18 +673,19 @@ export default function QuoteScreen() {
             <ThemedText type="small" themeColor="textSecondary">
               These quality details are self-reported. The administrator will review your quote.
             </ThemedText>
+            <FormError
+              message={
+                hasErrors(fieldErrors)
+                  ? "Some details need fixing. Check the fields marked in red above."
+                  : error
+              }
+            />
             <Button
               label="Review quote  →"
               onPress={reviewQuote}
               disabled={addressesLoading || Boolean(addressesError)}
             />
           </Card>
-        ) : null}
-
-        {error ? (
-          <ThemedText type="small" themeColor="textSecondary">
-            {error}
-          </ThemedText>
         ) : null}
 
         {!submitted ? (

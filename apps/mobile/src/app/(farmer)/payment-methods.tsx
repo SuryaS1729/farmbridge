@@ -13,6 +13,7 @@ import {
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { FormError } from "@/components/form-errors";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ThemedText } from "@/components/themed-text";
@@ -203,11 +204,7 @@ export default function PaymentMethodsScreen() {
             )}
           </Card>
 
-          {error ? (
-            <ThemedText type="small" style={styles.error}>
-              {error}
-            </ThemedText>
-          ) : null}
+          <FormError message={error} />
 
           <Button label="Save payment method" onPress={save} />
         </ScrollView>
@@ -286,5 +283,4 @@ const styles = StyleSheet.create({
     fontFamily: Fonts?.sans,
     fontSize: 16,
   },
-  error: { color: "#9A4237" },
 });

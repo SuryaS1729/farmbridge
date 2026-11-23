@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { router } from "expo-router";
+import { useRef } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { FarmDetailsForm } from "@/components/farm-details-form";
@@ -21,6 +22,7 @@ import { loadState, profileQuery } from "@/lib/queries";
 
 export default function EditFarmDetailsScreen() {
   const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ScrollView>(null);
   const { data: session } = authClient.useSession();
   const phoneNumber = (session?.user as { phoneNumber?: string | null } | undefined)
     ?.phoneNumber;
@@ -37,6 +39,7 @@ export default function EditFarmDetailsScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={[
             styles.content,
             {
@@ -77,6 +80,7 @@ export default function EditFarmDetailsScreen() {
             <FarmDetailsForm
               initial={profile}
               phoneNumber={phoneNumber}
+              scrollRef={scrollRef}
               submitLabel="Save changes"
               onSaved={() => router.back()}
             />

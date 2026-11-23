@@ -15,6 +15,11 @@ export const Palette = {
   accentSoftDark: "#2E3B2A",
   dark: "#1C2119",
   onDark: "rgba(251, 250, 246, 0.62)",
+  // Brick red for errors; the dark-mode pair is lighter so it reads on the dark surface.
+  danger: "#9A4237",
+  dangerSoftLight: "#FFF0ED",
+  dangerOnDark: "#E89A88",
+  dangerSoftDark: "#3A2420",
 } as const;
 
 /** Semantic colors used by themed components and screen styles. */
@@ -32,6 +37,8 @@ export const Colors = {
     accent: Palette.accent,
     accentText: Palette.paper,
     accentSoft: Palette.accentSoftLight,
+    danger: Palette.danger,
+    dangerSoft: Palette.dangerSoftLight,
     darkSurface: Palette.dark,
     onDark: Palette.onDark,
   },
@@ -48,6 +55,8 @@ export const Colors = {
     accent: Palette.accent,
     accentText: Palette.paper,
     accentSoft: Palette.accentSoftDark,
+    danger: Palette.dangerOnDark,
+    dangerSoft: Palette.dangerSoftDark,
     darkSurface: Palette.dark,
     onDark: Palette.onDark,
   },
