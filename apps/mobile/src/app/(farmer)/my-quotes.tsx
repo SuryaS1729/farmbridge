@@ -4,7 +4,14 @@ import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, V
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AddressPicker } from "@/components/address-picker";
+import {
+  AddressFields,
+  emptyAddress,
+  trimAddress,
+  validateAddress,
+  type AddressFieldErrors,
+} from "@/components/address-fields";
+import { AddressPicker, NEW_ADDRESS } from "@/components/address-picker";
 import { FieldError } from "@/components/form-errors";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -14,11 +21,13 @@ import { Radius, Space } from "@/constants/theme";
 import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus";
 import { useTheme } from "@/hooks/use-theme";
 import {
+  createAddress,
   formatDateForIndia,
   formatPricePerKg,
   formatQuantity,
   isOpenQuote,
   savePickupLocation as saveDealPickupLocation,
+  type AddressInput,
   type FarmerOffer,
 } from "@/lib/farmbridge-api";
 import { posthog, posthogLogger } from "@/lib/posthog";
@@ -74,6 +83,9 @@ export default function MyQuotesScreen() {
   const [chosenAddressId, setChosenAddressId] = useState<string | null>(null);
   const [pickupLocationError, setPickupLocationError] = useState<string | null>(null);
   const [pickupLocationNotice, setPickupLocationNotice] = useState<string | null>(null);
+  // Filled in when the farmer picks "Use a new address".
+  const [newAddress, setNewAddress] = useState<AddressInput>(emptyAddress);
+  const [newAddressErrors, setNewAddressErrors] = useState<AddressFieldErrors>({});
 
   // Opening the screen shows cached quotes instantly and refreshes them in the background.
   const quotesResult = useQuery(quotesQuery);
@@ -100,7 +112,21 @@ export default function MyQuotesScreen() {
       );
     },
   });
-  const savingPickupDealId = pickupMutation.isPending ? pickupMutation.variables.dealId : null;
+  // A typed-in address is saved to the farmer's list first, like on the quote form.
+  const addressMutation = useMutation({
+    mutationFn: createAddress,
+    onSuccess: ({ address }) => {
+      queryClient.setQueryData(addressesQuery.queryKey, (current) =>
+        current && { ...current, addresses: [...current.addresses, address] },
+      );
+      void queryClient.invalidateQueries({ queryKey: queryKeys.addresses });
+    },
+  });
+  const savingPickupDealId = addressMutation.isPending
+    ? changingDealId
+    : pickupMutation.isPending
+      ? pickupMutation.variables.dealId
+      : null;
 
   async function refresh() {
     setRefreshing(true);
@@ -112,32 +138,50 @@ export default function MyQuotesScreen() {
     setPickupLocationError(null);
     setPickupLocationNotice(null);
     setChangingDealId(dealId);
+    setNewAddress(emptyAddress);
+    setNewAddressErrors({});
     const current = addresses.find((a) => a.address === currentLocation)
       ?? addresses.find((a) => a.isDefault)
       ?? addresses[0];
-    setChosenAddressId(current?.id ?? null);
+    // With no saved addresses, go straight to typing a new one.
+    setChosenAddressId(current?.id ?? NEW_ADDRESS);
   }
 
   async function submitPickupLocation(dealId: string) {
+    const usingNewAddress = chosenAddressId === NEW_ADDRESS;
     const chosen = addresses.find((a) => a.id === chosenAddressId);
     setPickupLocationError(null);
     setPickupLocationNotice(null);
-    if (!chosen) {
-      setPickupLocationError("Choose one of your saved addresses.");
+    if (usingNewAddress) {
+      const errors = validateAddress(newAddress);
+      setNewAddressErrors(errors);
+      if (errors.label || errors.address) return;
+    } else if (!chosen) {
+      setPickupLocationError("Choose where the driver should collect your cocoa.");
       return;
     }
-    const pickupLocation = chosen.address;
 
     try {
+      let pickupLocation: string;
+      if (usingNewAddress) {
+        const { address } = await addressMutation.mutateAsync(trimAddress(newAddress));
+        // Now saved: select it, so a retry after a failed deal update doesn't save it twice.
+        setChosenAddressId(address.id);
+        pickupLocation = address.address;
+      } else {
+        pickupLocation = chosen!.address;
+      }
       await pickupMutation.mutateAsync({ dealId, pickupLocation });
       setChangingDealId(null);
       const isUpdate = Boolean(quotes.find((quote) => quote.dealId === dealId)?.pickupLocation);
       posthog?.capture("pickup_location_saved", {
         is_update: isUpdate,
+        pickup_address: usingNewAddress ? "new" : "saved",
       });
       posthogLogger.info("pickup location saved", {
         operation: "pickup_location_save",
         is_update: isUpdate,
+        pickup_address: usingNewAddress ? "new" : "saved",
       });
       setPickupLocationNotice(dealId);
     } catch (saveError) {
@@ -342,42 +386,44 @@ export default function MyQuotesScreen() {
                           )}
 
                           {changingDealId === quote.dealId ? (
-                            addresses.length > 0 ? (
-                              <>
-                                <AddressPicker
-                                  addresses={addresses}
-                                  selectedId={chosenAddressId}
-                                  onSelect={setChosenAddressId}
+                            <>
+                              <AddressPicker
+                                addresses={addresses}
+                                selectedId={chosenAddressId}
+                                onSelect={(id) => {
+                                  setChosenAddressId(id);
+                                  setPickupLocationError(null);
+                                }}
+                                allowNew
+                                disabled={savingPickupDealId === quote.dealId}
+                              />
+                              {chosenAddressId === NEW_ADDRESS ? (
+                                <AddressFields
+                                  value={newAddress}
+                                  onChange={(value, changed) => {
+                                    setNewAddress(value);
+                                    setNewAddressErrors((current) => ({ ...current, [changed]: undefined }));
+                                  }}
+                                  errors={newAddressErrors}
                                   disabled={savingPickupDealId === quote.dealId}
                                 />
-                                <View style={styles.pickupActions}>
-                                  <Button
-                                    label="Cancel"
-                                    variant="outline"
-                                    style={styles.flex}
-                                    disabled={savingPickupDealId === quote.dealId}
-                                    onPress={() => setChangingDealId(null)}
-                                  />
-                                  <Button
-                                    label="Use this address"
-                                    style={styles.flex}
-                                    loading={savingPickupDealId === quote.dealId}
-                                    onPress={() => void submitPickupLocation(quote.dealId!)}
-                                  />
-                                </View>
-                              </>
-                            ) : (
-                              <>
-                                <ThemedText type="small" themeColor="textSecondary">
-                                  You have no saved addresses. Add one in Addresses, then come back here.
-                                </ThemedText>
+                              ) : null}
+                              <View style={styles.pickupActions}>
                                 <Button
-                                  label="Open addresses"
+                                  label="Cancel"
                                   variant="outline"
-                                  onPress={() => router.push("/addresses")}
+                                  style={styles.flex}
+                                  disabled={savingPickupDealId === quote.dealId}
+                                  onPress={() => setChangingDealId(null)}
                                 />
-                              </>
-                            )
+                                <Button
+                                  label="Use this address"
+                                  style={styles.flex}
+                                  loading={savingPickupDealId === quote.dealId}
+                                  onPress={() => void submitPickupLocation(quote.dealId!)}
+                                />
+                              </View>
+                            </>
                           ) : (
                             <Button
                               label={quote.pickupLocation ? "Change pickup address" : "Choose pickup address"}
