@@ -18,6 +18,7 @@ import {
   validateAddress,
 } from "@/components/address-fields";
 import { AddressPicker, NEW_ADDRESS } from "@/components/address-picker";
+import { DateField } from "@/components/date-field";
 import {
   FieldError,
   FormError,
@@ -38,6 +39,7 @@ import {
   isOpenQuote,
   reviseQuote,
   submitQuote,
+  todayInIndia,
   type AddressInput,
   type FarmerOffer,
   type QuoteInput,
@@ -57,6 +59,7 @@ type QuoteFields = {
   quantity: string;
   moisturePercent: string;
   beanCountPer100g: string;
+  /** ISO `YYYY-MM-DD` from the date picker, "" until chosen. */
   readyOn: string;
 };
 
@@ -86,20 +89,9 @@ function fieldsFromQuote(quote: FarmerOffer): { fields: QuoteFields; unit: Quant
       quantity: inQuintals ? quote.quantityQuintals : formatPricePerKg(quote.quantityKg),
       moisturePercent: formatPricePerKg(quote.moisturePercent),
       beanCountPer100g: formatPricePerKg(quote.beanCountPer100g),
-      readyOn: formatDateForIndia(quote.readyOn),
+      readyOn: quote.readyOn,
     },
   };
-}
-
-function indianDateToIso(value: string) {
-  const match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(value);
-  if (!match) return null;
-
-  const isoDate = `${match[3]}-${match[2]}-${match[1]}`;
-  const parsed = new Date(`${isoDate}T00:00:00.000Z`);
-  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === isoDate
-    ? isoDate
-    : null;
 }
 
 function InputField({
@@ -287,8 +279,11 @@ export default function QuoteScreen() {
     if (fields.beanCountPer100g.trim() === "" || !Number.isFinite(beanCount) || beanCount <= 0) {
       errors.beanCountPer100g = "Enter how many beans are in 100 g, for example 110.";
     }
-    if (!indianDateToIso(fields.readyOn)) {
-      errors.readyOn = "Enter the date as DD-MM-YYYY, for example 05-12-2026.";
+    if (!fields.readyOn) {
+      errors.readyOn = "Choose the date your cocoa will be ready for pickup.";
+    } else if (fields.readyOn < todayInIndia()) {
+      // ISO dates compare correctly as strings. Matters for a revised quote whose date has passed.
+      errors.readyOn = "The ready date can't be before today. Choose today or a later date.";
     }
     if (usingNewAddress) {
       const addressErrors = validateAddress(newAddress);
@@ -323,18 +318,13 @@ export default function QuoteScreen() {
 
   async function confirmSubmission() {
     setError(null);
-    const readyOn = indianDateToIso(fields.readyOn);
-    if (!readyOn) {
-      setError("Enter the expected pickup readiness date as DD-MM-YYYY.");
-      return;
-    }
     const input: QuoteInput = {
       offeredPricePerKg: fields.offeredPricePerKg,
       quantity: fields.quantity,
       quantityUnit,
       moisturePercent: Number(fields.moisturePercent),
       beanCountPer100g: Number(fields.beanCountPer100g),
-      readyOn,
+      readyOn: fields.readyOn,
       ...(usingNewAddress
         ? { newPickupAddress: trimAddress(newAddress) }
         : { pickupAddressId: selectedAddress!.id }),
@@ -493,7 +483,7 @@ export default function QuoteScreen() {
             />
             <ReviewRow label="Bean moisture" value={`${fields.moisturePercent}%`} />
             <ReviewRow label="Bean count" value={`${fields.beanCountPer100g} per 100 g`} />
-            <ReviewRow label="Ready for pickup" value={fields.readyOn} />
+            <ReviewRow label="Ready for pickup" value={formatDateForIndia(fields.readyOn)} />
             <ReviewRow label="Pickup address" value={pickupSummary} />
             {usingNewAddress ? (
               <ThemedText type="small" themeColor="textSecondary">
@@ -605,14 +595,14 @@ export default function QuoteScreen() {
               placeholder="e.g. 110"
               keyboardType="decimal-pad"
             />
-            <InputField
-              label="EXPECTED READY DATE FOR PICKUP (DD-MM-YYYY)"
+            <DateField
+              label="READY FOR PICKUP ON"
               error={fieldErrors.readyOn}
               fieldRef={fieldRef("readyOn")}
               value={fields.readyOn}
-              onChangeText={(value) => setField("readyOn", value)}
-              placeholder="DD-MM-YYYY"
-              keyboardType="default"
+              onChange={(value) => setField("readyOn", value)}
+              minimumDate={todayInIndia()}
+              placeholder="Choose the date"
             />
             <View ref={fieldRef("pickupAddress")} style={styles.field}>
               <ThemedText type="label" themeColor="textSecondary">

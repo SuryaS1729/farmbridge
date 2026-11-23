@@ -18,6 +18,20 @@ export function formatDateForIndia(value: string) {
   return match ? `${match[3]}-${match[2]}-${match[1]}` : value;
 }
 
+/** Today's date in India as ISO `YYYY-MM-DD`, matching the API's business date. */
+export function todayInIndia(now = new Date()) {
+  const parts: Record<string, string> = {};
+  for (const part of new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now)) {
+    parts[part.type] = part.value;
+  }
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
 export type TodayPriceResponse = {
   businessDate: string;
   price: DailyCocoaPrice | null;

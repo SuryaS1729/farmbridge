@@ -246,10 +246,14 @@ type QuoteProblem =
   | { kind: "price_missing" }
   | { kind: "below_base_price"; basePricePerKg: string }
   | { kind: "address_missing" }
-  | { kind: "address_limit" };
+  | { kind: "address_limit" }
+  | { kind: "ready_in_past" };
 
 /** The shared checks for a new or revised quote: today's price, the base price, the pickup address. */
 async function checkQuote(tx: Transaction, profileId: string, input: OfferInput, businessDate: string) {
+  // Both are ISO YYYY-MM-DD, so string order is date order.
+  if (input.readyOn < businessDate) return { kind: "ready_in_past" as const };
+
   const priceResult = await lockTodaysPrice(tx, businessDate);
   if (priceResult.kind !== "ok") return priceResult;
   const { price } = priceResult;
@@ -280,6 +284,8 @@ function quoteProblemResponse(c: Context<{ Bindings: CloudflareBindings }>, prob
       );
     case "address_missing":
       return c.json({ error: "That saved address no longer exists. Choose another one." }, 409);
+    case "ready_in_past":
+      return c.json({ error: "The ready date can't be before today. Choose today or a later date." }, 400);
     case "address_limit":
       return c.json(
         {
