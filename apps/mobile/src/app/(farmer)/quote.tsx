@@ -155,6 +155,11 @@ function shiftDecimal(value: string, places: number) {
   return fraction ? `${whole}.${fraction}` : whole;
 }
 
+/** A plain number in Indian grouping, e.g. 1,250 or 2.5. */
+function formatAmount(value: number) {
+  return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(value);
+}
+
 /** A row of large tappable choices, like Today / Tomorrow / Another day. */
 function ChoiceRow<T extends string>({
   options,
@@ -346,6 +351,15 @@ export default function QuoteScreen() {
   const quantityKg = Number(fields.quantity) * (quantityUnit === "quintal" ? 100 : 1);
   const estimatedTotal = Number(fields.offeredPricePerKg) * quantityKg;
   const hasEstimate = Number.isFinite(estimatedTotal) && estimatedTotal > 0;
+  // The price is always per kg, but the quantity can be in quintals. Spell out the conversion
+  // so the farmer can see how the per-kg price and the quantity make the estimate.
+  const pricePerKg = Number(fields.offeredPricePerKg);
+  const hasPrice = Number.isFinite(pricePerKg) && pricePerKg > 0;
+  const quantityLabel = `${fields.quantity} ${quantityUnit === "quintal" ? "quintals" : "kg"}`;
+  const estimateWorking =
+    (quantityUnit === "quintal" ? `${quantityLabel} = ${formatAmount(quantityKg)} kg` : `${formatAmount(quantityKg)} kg`) +
+    ` × ₹${fields.offeredPricePerKg}/kg`;
+  const pricePerQuintal = hasPrice ? formatRupees(pricePerKg * 100) : "";
   const { loading: loadingPrice, error: priceError } = loadState(
     priceQuery,
     "Could not load today's cocoa price.",
@@ -754,7 +768,11 @@ export default function QuoteScreen() {
                     value={fields.offeredPricePerKg}
                     onChangeText={(value) => setField("offeredPricePerKg", value)}
                     placeholder={offerPriceFromBase(price.basePricePerKg)}
-                    hint={`Today's base price is ₹${formatPricePerKg(price.basePricePerKg)}. You can offer more.`}
+                    hint={
+                      quantityUnit === "quintal" && hasPrice
+                        ? `That is ${pricePerQuintal} per quintal. Today's base price is ₹${formatPricePerKg(price.basePricePerKg)}/kg.`
+                        : `Today's base price is ₹${formatPricePerKg(price.basePricePerKg)}/kg. You can offer more.`
+                    }
                     keyboardType="decimal-pad"
                   />
                   {hasEstimate ? (
@@ -763,6 +781,9 @@ export default function QuoteScreen() {
                         ESTIMATED VALUE
                       </ThemedText>
                       <ThemedText type="figure">{formatRupees(estimatedTotal)}</ThemedText>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {estimateWorking}
+                      </ThemedText>
                     </View>
                   ) : null}
                 </Card>
@@ -892,15 +913,27 @@ export default function QuoteScreen() {
                     </ThemedText>
                     <ThemedText type="figure">{formatRupees(estimatedTotal)}</ThemedText>
                     <ThemedText type="small" themeColor="textSecondary">
+                      {estimateWorking}
+                    </ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary">
                       You are paid for the weight measured at pickup, so the final amount may differ.
                     </ThemedText>
                   </View>
                   <ReviewSection title="YOUR COCOA" onChange={() => showStep(0, true)}>
                     <ReviewRow
                       label="Quantity"
-                      value={`${fields.quantity} ${quantityUnit === "quintal" ? "quintals" : "kg"}`}
+                      value={
+                        quantityUnit === "quintal" ? `${quantityLabel} (${formatAmount(quantityKg)} kg)` : quantityLabel
+                      }
                     />
-                    <ReviewRow label="Your price" value={`₹${fields.offeredPricePerKg} per kg`} />
+                    <ReviewRow
+                      label="Your price"
+                      value={
+                        quantityUnit === "quintal" && hasPrice
+                          ? `₹${fields.offeredPricePerKg} per kg (${pricePerQuintal} per quintal)`
+                          : `₹${fields.offeredPricePerKg} per kg`
+                      }
+                    />
                   </ReviewSection>
                   <ReviewSection title="BEAN QUALITY" onChange={() => showStep(1, true)}>
                     <ReviewRow label="Moisture" value={`${fields.moisturePercent}%`} />
