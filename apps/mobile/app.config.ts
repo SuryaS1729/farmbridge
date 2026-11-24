@@ -1,14 +1,11 @@
-import type { ExpoConfig } from "expo/config";
+import type { ConfigContext, ExpoConfig } from "expo/config";
 
-import appConfig from "./app.json";
-
-const config = appConfig.expo as ExpoConfig;
-
-export default {
-  ...config,
+// Expo reads app.json and passes it in as `config`.
+export default ({ config }: ConfigContext): ExpoConfig => ({
+  ...(config as ExpoConfig),
   extra: {
     ...config.extra,
     posthogProjectToken: process.env.POSTHOG_PROJECT_TOKEN,
     posthogHost: process.env.POSTHOG_HOST,
   },
-};
+});

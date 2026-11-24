@@ -5,6 +5,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  type ScrollViewInstance,
   StyleSheet,
   View,
 } from "react-native";
@@ -22,7 +23,7 @@ import { loadState, profileQuery } from "@/lib/queries";
 
 export default function EditFarmDetailsScreen() {
   const insets = useSafeAreaInsets();
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const { data: session } = authClient.useSession();
   const phoneNumber = (session?.user as { phoneNumber?: string | null } | undefined)
     ?.phoneNumber;

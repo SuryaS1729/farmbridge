@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { StyleSheet, TextInput, View, type TextInputProps } from "react-native";
+import { StyleSheet, TextInput, View, type HostInstance, type TextInputProps } from "react-native";
 
 import { FieldError } from "@/components/form-errors";
 import { ThemedText } from "@/components/themed-text";
@@ -28,7 +28,7 @@ export function InputField({
   hint?: string;
   error?: string;
   /** Scroll target for the first error, from useScrollToField. */
-  fieldRef?: (node: View | null) => void;
+  fieldRef?: (node: HostInstance | null) => void;
   /** Shown at the right of the label, e.g. a unit switch. */
   accessory?: ReactNode;
   /** Extra TextInput props, e.g. autoCapitalize or maxLength. */

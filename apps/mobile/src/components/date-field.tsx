@@ -1,6 +1,6 @@
 import DateTimePicker from "@expo/ui/community/datetime-picker";
 import { useState } from "react";
-import { Platform, Pressable, StyleSheet, View } from "react-native";
+import { Platform, Pressable, StyleSheet, View, type HostInstance } from "react-native";
 
 import { FieldError } from "@/components/form-errors";
 import { ThemedText } from "@/components/themed-text";
@@ -44,7 +44,7 @@ export function DateField({
   minimumDate?: string;
   placeholder?: string;
   error?: string;
-  fieldRef?: (node: View | null) => void;
+  fieldRef?: (node: HostInstance | null) => void;
 }) {
   const theme = useTheme();
   const [open, setOpen] = useState(false);

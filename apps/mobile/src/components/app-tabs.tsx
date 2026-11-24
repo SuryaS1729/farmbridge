@@ -5,7 +5,7 @@ import { Colors } from "@/constants/theme";
 
 export default function AppTabs() {
   const scheme = useColorScheme();
-  const colors = Colors[scheme === "unspecified" ? "light" : scheme];
+  const colors = Colors[scheme === "dark" ? "dark" : "light"];
 
   return (
     // Every colour is set explicitly. Anything left unset on Android is filled in from the

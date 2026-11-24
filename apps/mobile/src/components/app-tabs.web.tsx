@@ -6,7 +6,8 @@ import {
   TabTriggerSlotProps,
   TabListProps,
 } from "expo-router/ui";
-import { Pressable, View, StyleSheet } from "react-native";
+import type { Ref } from "react";
+import { Pressable, View, StyleSheet, type HostInstance } from "react-native";
 
 import { ThemedText } from "./themed-text";
 import { ThemedView } from "./themed-view";
@@ -31,11 +32,15 @@ export default function AppTabs() {
   );
 }
 
+// expo-router still types this ref as the View component; on React Native 0.88+ the
+// instance it actually receives is a HostInstance.
+type TabButtonProps = Omit<TabTriggerSlotProps, "ref"> & { ref?: Ref<HostInstance> };
+
 export function TabButton({
   children,
   isFocused,
   ...props
-}: TabTriggerSlotProps) {
+}: TabButtonProps) {
   return (
     <Pressable {...props} style={({ pressed }) => pressed && styles.pressed}>
       <ThemedView

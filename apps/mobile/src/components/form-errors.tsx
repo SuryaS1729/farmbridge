@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import { StyleSheet, View, type ScrollView } from "react-native";
+import { StyleSheet, View, type HostInstance, type ScrollViewInstance } from "react-native";
 
 import { ThemedText } from "@/components/themed-text";
 import { Radius, Space } from "@/constants/theme";
@@ -55,16 +55,16 @@ export function FormError({ message }: { message?: string | null }) {
  * Give each field's wrapping View `ref={fieldRef("name")}`, then call
  * `scrollToFirst(errors)` with errors in on-screen order.
  */
-export function useScrollToField(scrollRef: RefObject<ScrollView | null>) {
-  const fields = useRef(new Map<string, View | null>());
-  const callbacks = useRef(new Map<string, (node: View | null) => void>());
+export function useScrollToField(scrollRef: RefObject<ScrollViewInstance | null>) {
+  const fields = useRef(new Map<string, HostInstance | null>());
+  const callbacks = useRef(new Map<string, (node: HostInstance | null) => void>());
   // Scroll after the error messages have rendered, since they move the fields below them.
   const [target, setTarget] = useState<{ key: string } | null>(null);
 
   const fieldRef = useCallback((key: string) => {
     let callback = callbacks.current.get(key);
     if (!callback) {
-      callback = (node: View | null) => {
+      callback = (node: HostInstance | null) => {
         fields.current.set(key, node);
       };
       callbacks.current.set(key, callback);
@@ -81,6 +81,7 @@ export function useScrollToField(scrollRef: RefObject<ScrollView | null>) {
     if (!target) return;
     const field = fields.current.get(target.key);
     const scroll = scrollRef.current;
+    // Measure against the scroll content, not the visible frame, to get the field's scroll offset.
     const content = scroll?.getInnerViewRef();
     if (!field || !scroll || !content) return;
     field.measureLayout(content, (_x, y) => {

@@ -7,6 +7,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  type ScrollViewInstance,
   StyleSheet,
   View,
 } from "react-native";
@@ -65,7 +66,7 @@ export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
   const queryClient = useQueryClient();
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const { fieldRef, scrollToFirst } = useScrollToField(scrollRef);
   const { data: session } = authClient.useSession();
   const phoneNumber = (session?.user as { phoneNumber?: string | null } | undefined)?.phoneNumber;

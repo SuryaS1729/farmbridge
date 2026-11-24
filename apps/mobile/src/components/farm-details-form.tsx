@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode, type RefObject } from "react";
-import { StyleSheet, TextInput, View, type ScrollView, type TextInputProps } from "react-native";
+import { StyleSheet, TextInput, View, type HostInstance, type ScrollViewInstance, type TextInputProps } from "react-native";
 
 import {
   FieldError,
@@ -89,7 +89,7 @@ export function FarmDetailsForm({
   /** Optional: the saved profile is already written to the shared query cache. */
   onSaved?: (profile: FarmerProfile) => void;
   /** The screen's ScrollView, so a failed submit can scroll to the first problem. */
-  scrollRef: RefObject<ScrollView | null>;
+  scrollRef: RefObject<ScrollViewInstance | null>;
 }) {
   const saveMutation = useSaveFarmDetails();
   const saving = saveMutation.isPending;
@@ -239,7 +239,7 @@ function Field({
 }: {
   label: string;
   error?: string;
-  fieldRef?: (node: View | null) => void;
+  fieldRef?: (node: HostInstance | null) => void;
   children: ReactNode;
 }) {
   return (
