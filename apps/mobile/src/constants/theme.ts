@@ -13,6 +13,9 @@ export const Palette = {
   accent: "#3E6B3A",
   accentSoftLight: "#DDE7D4",
   accentSoftDark: "#2E3B2A",
+  // A brighter leaf green for progress, so it reads at a glance; lighter again on dark.
+  progressLight: "#4E9A3F",
+  progressDark: "#7DBE5F",
   dark: "#1C2119",
   onDark: "rgba(251, 250, 246, 0.62)",
   // Brick red for errors; the dark-mode pair is lighter so it reads on the dark surface.
@@ -37,6 +40,7 @@ export const Colors = {
     accent: Palette.accent,
     accentText: Palette.paper,
     accentSoft: Palette.accentSoftLight,
+    progress: Palette.progressLight,
     danger: Palette.danger,
     dangerSoft: Palette.dangerSoftLight,
     darkSurface: Palette.dark,
@@ -55,6 +59,7 @@ export const Colors = {
     accent: Palette.accent,
     accentText: Palette.paper,
     accentSoft: Palette.accentSoftDark,
+    progress: Palette.progressDark,
     danger: Palette.dangerOnDark,
     dangerSoft: Palette.dangerSoftDark,
     darkSurface: Palette.dark,

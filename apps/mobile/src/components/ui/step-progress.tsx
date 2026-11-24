@@ -14,6 +14,9 @@ import { useTheme } from "@/hooks/use-theme";
 
 // Reanimated follows the phone's "reduce motion" setting by default, so this jumps instead.
 const TIMING = { duration: 450, easing: Easing.out(Easing.cubic) };
+// The current step's bar always shows a small sliver, even before anything is answered,
+// so it is clear which step the farmer is on. Answers fill the rest.
+const START = 0.08;
 
 /**
  * A row of bars plus "STEP 2 OF 3", for forms split into short steps. `step` counts from 0.
@@ -33,8 +36,9 @@ export function StepProgress({
   const theme = useTheme();
   // One value for the whole form: 1.5 means the first bar full and the second half full.
   // Animating that single number lets the fill run on smoothly from one bar into the next.
-  const target = step + Math.min(1, Math.max(0, fraction));
-  const progress = useSharedValue(0);
+  const target = step + START + (1 - START) * Math.min(1, Math.max(0, fraction));
+  // Starts at the current step's sliver rather than empty, then moves with each answer.
+  const progress = useSharedValue(step + START);
 
   useEffect(() => {
     progress.value = withTiming(target, TIMING);
@@ -48,7 +52,7 @@ export function StepProgress({
             key={index}
             index={index}
             progress={progress}
-            fill={theme.accent}
+            fill={theme.progress}
             track={theme.border}
           />
         ))}
