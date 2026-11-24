@@ -398,6 +398,24 @@ export default function QuoteScreen() {
       ? `${selectedAddress.label} — ${selectedAddress.address}`
       : "";
 
+  // How much of the current step is filled in, for the progress bar at the top. Each answered
+  // field moves it along; a step with every field answered fills its bar.
+  const filled = (value: string) => value.trim() !== "";
+  const stepInputs: readonly boolean[][] = [
+    [filled(fields.quantity), filled(fields.offeredPricePerKg)],
+    [filled(fields.moisturePercent), filled(fields.beanCountPer100g)],
+    [
+      filled(fields.readyOn),
+      ...(usingNewAddress
+        ? [filled(newAddress.label), filled(newAddress.address)]
+        : [selectedAddress !== null]),
+    ],
+  ];
+  const currentInputs = stepInputs[step] ?? [];
+  const stepFraction = currentInputs.length
+    ? currentInputs.filter(Boolean).length / currentInputs.length
+    : 1;
+
   const today = todayInIndia();
   const tomorrow = todayInIndia(new Date(Date.now() + 24 * 60 * 60 * 1000));
   const readyChoice: "today" | "tomorrow" | "other" | null =
@@ -664,7 +682,7 @@ export default function QuoteScreen() {
 
           <View style={styles.header}>
             {inForm && step !== REVIEW && !revising ? (
-              <StepProgress step={step} total={3} />
+              <StepProgress step={step} total={3} fraction={stepFraction} />
             ) : (
               <ThemedText type="label" themeColor="textSecondary">
                 {revisingId ? "SELL COCOA · CHANGE QUOTE" : "SELL COCOA"}
