@@ -441,8 +441,8 @@ export default function QuoteScreen() {
     setField("readyOn", choice === "today" ? today : tomorrow);
   }
 
-  // Where Back goes from inside the form: to the review after a Change, else the previous
-  // step. Null means Back leaves the screen.
+  // Where the Back button under the form goes: to the review after a Change, else the
+  // previous step. Null means there is no step to go back to.
   const previousStep: Step | null = returnToReview
     ? REVIEW
     : step > 0 && !revising
@@ -458,16 +458,13 @@ export default function QuoteScreen() {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }
 
-  // Back button, Android back gesture and the top back link all land here. Inside the form
-  // they step back; leaving asks before discarding typed details. A submitted quote leaves freely.
+  // The top back link, the back gesture and Android's back button always mean "leave the form",
+  // on every step: they ask before discarding typed details. Moving between steps is only
+  // through the Back and Next buttons under the form. A submitted quote leaves freely.
   // Set once the farmer confirms Discard, so the guard is off while the back action replays.
   const [discarding, setDiscarding] = useState(false);
   const blocked = !submitted && !openQuote && !revisingClosed && !discarding;
-  usePreventRemove(blocked && (previousStep !== null || dirty), ({ repeat }) => {
-    if (previousStep !== null) {
-      showStep(previousStep);
-      return;
-    }
+  usePreventRemove(blocked && dirty, ({ repeat }) => {
     Alert.alert(
       revisingId ? "Discard your changes?" : "Discard this offer?",
       revisingId
