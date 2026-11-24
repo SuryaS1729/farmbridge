@@ -12,7 +12,7 @@ import {
   View,
 } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { router, useLocalSearchParams, useNavigation } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -460,9 +460,10 @@ export default function QuoteScreen() {
 
   // Back button, Android back gesture and the top back link all land here. Inside the form
   // they step back; leaving asks before discarding typed details. A submitted quote leaves freely.
-  const navigation = useNavigation();
-  const blocked = !submitted && !openQuote && !revisingClosed;
-  usePreventRemove(blocked && (previousStep !== null || dirty), ({ data }) => {
+  // Set once the farmer confirms Discard, so the guard is off while the back action replays.
+  const [discarding, setDiscarding] = useState(false);
+  const blocked = !submitted && !openQuote && !revisingClosed && !discarding;
+  usePreventRemove(blocked && (previousStep !== null || dirty), ({ repeat }) => {
     if (previousStep !== null) {
       showStep(previousStep);
       return;
@@ -474,7 +475,16 @@ export default function QuoteScreen() {
         : "The details you entered will be lost.",
       [
         { text: "Keep editing", style: "cancel" },
-        { text: "Discard", style: "destructive", onPress: () => navigation.dispatch(data.action) },
+        {
+          text: "Discard",
+          style: "destructive",
+          // Since expo-router 58, dispatching the blocked action is blocked again. repeat()
+          // lifts the block first, then replays the back action.
+          onPress: () => {
+            setDiscarding(true);
+            repeat();
+          },
+        },
       ],
     );
   });
