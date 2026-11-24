@@ -97,9 +97,10 @@ const STEP_FIELDS: readonly (readonly QuoteErrorKey[])[] = [
   ["readyOn", "pickupAddress", "addressLabel", "addressText"],
 ];
 
+// Same kg | quintal switch as the price card on Home.
 const UNIT_OPTIONS = [
-  { value: "quintal", label: "Quintals" },
-  { value: "kg", label: "kg", accessibilityLabel: "Kilograms" },
+  { value: "kg", label: "kg", accessibilityLabel: "Quantity in kilograms" },
+  { value: "quintal", label: "quintal", accessibilityLabel: "Quantity in quintals" },
 ] as const;
 
 /** The errors that belong to one step, in on-screen order. */
@@ -247,7 +248,10 @@ export default function QuoteScreen() {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const [fields, setFields] = useState<QuoteFields>(emptyFields);
-  const [quantityUnit, setQuantityUnit] = useState<QuantityUnit>("quintal");
+  // With ?offerId= this screen revises that open quote instead of making a new one. ?unit= is
+  // the unit the farmer was viewing the price in on Home, so the form starts in the same one.
+  const { offerId, unit } = useLocalSearchParams<{ offerId?: string; unit?: string }>();
+  const [quantityUnit, setQuantityUnit] = useState<QuantityUnit>(unit === "kg" ? "kg" : "quintal");
   const [step, setStep] = useState<Step>(0);
   // Set when the farmer taps Change on the review, so the step returns there when done.
   const [returnToReview, setReturnToReview] = useState(false);
@@ -267,8 +271,6 @@ export default function QuoteScreen() {
   // "Another day" opens the phone's date picker straight away.
   const [datePickerOpen, setDatePickerOpen] = useState(false);
 
-  // With ?offerId= this screen revises that open quote instead of making a new one.
-  const { offerId } = useLocalSearchParams<{ offerId?: string }>();
   const revisingId = typeof offerId === "string" && offerId ? offerId : null;
   const quotesResult = useQuery(quotesQuery);
   const revisingQuote = revisingId

@@ -141,7 +141,8 @@ export default function FarmerHomeScreen() {
           {openQuote ? null : (
             <Button
               label="Make a cocoa offer  →"
-              onPress={() => router.push("../quote")}
+              // Opens the form in the unit the farmer is viewing the price in.
+              onPress={() => router.push(`../quote?unit=${priceUnit}`)}
               disabled={!price || loadingPrice}
             />
           )}
