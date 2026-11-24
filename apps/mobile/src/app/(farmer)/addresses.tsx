@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -23,6 +22,7 @@ import {
 import { FormError, hasErrors } from "@/components/form-errors";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Icon } from "@/components/ui/icon";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -94,19 +94,14 @@ export default function AddressesScreen() {
     if (ok) setEditing(null);
   }
 
+  // The address being confirmed for deletion. It is kept after the dialog closes, so the
+  // title doesn't change while the dialog animates away.
+  const [deleteTarget, setDeleteTarget] = useState<FarmerAddress | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
   function confirmDelete(address: FarmerAddress) {
-    Alert.alert(
-      `Delete "${address.label}"?`,
-      "Quotes and deals you already sent keep their address.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => void run(address.id, () => deleteAddress(address.id)),
-        },
-      ],
-    );
+    setDeleteTarget(address);
+    setConfirmingDelete(true);
   }
 
   const addressForm = editing ? (
@@ -295,6 +290,18 @@ export default function AddressesScreen() {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+      <ConfirmDialog
+        visible={confirmingDelete}
+        title={`Delete "${deleteTarget?.label ?? ""}"?`}
+        message="Quotes and deals you already sent keep their address."
+        cancelLabel="Cancel"
+        confirmLabel="Delete"
+        destructive
+        onClose={() => setConfirmingDelete(false)}
+        onConfirm={() => {
+          if (deleteTarget) void run(deleteTarget.id, () => deleteAddress(deleteTarget.id));
+        }}
+      />
     </ThemedView>
   );
 }

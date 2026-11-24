@@ -1,6 +1,5 @@
 import { useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -16,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FormError } from "@/components/form-errors";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Fonts, Radius, Space } from "@/constants/theme";
@@ -61,6 +61,7 @@ export default function PaymentMethodsScreen() {
   const [upiId, setUpiId] = useState("");
   const [bank, setBank] = useState<BankFields>(emptyBank);
   const [error, setError] = useState<string | null>(null);
+  const [showNotSaved, setShowNotSaved] = useState(false);
 
   function save() {
     const problem = method === "upi" ? validateUpi(upiId) : validateBank(bank);
@@ -68,10 +69,7 @@ export default function PaymentMethodsScreen() {
     if (problem) return;
     // TODO: no payout API exists yet. Wire this to a farmer payment-method endpoint
     // (and store account numbers encrypted) before launch.
-    Alert.alert(
-      "Not saved yet",
-      "Your details look right, but saving payment methods isn't switched on yet.",
-    );
+    setShowNotSaved(true);
   }
 
   return (
@@ -209,6 +207,13 @@ export default function PaymentMethodsScreen() {
           <Button label="Save payment method" onPress={save} />
         </ScrollView>
       </KeyboardAvoidingView>
+      <ConfirmDialog
+        visible={showNotSaved}
+        title="Not saved yet"
+        message="Your details look right, but saving payment methods isn't switched on yet."
+        confirmLabel="OK"
+        onClose={() => setShowNotSaved(false)}
+      />
     </ThemedView>
   );
 }

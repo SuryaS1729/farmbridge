@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -34,6 +33,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { InputField } from "@/components/ui/input-field";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { StepProgress } from "@/components/ui/step-progress";
 import { SegmentedToggle } from "@/components/ui/segmented-toggle";
 import { ThemedText } from "@/components/themed-text";
@@ -484,26 +484,13 @@ export default function QuoteScreen() {
   // Set once the farmer confirms Discard, so the guard is off while the back action replays.
   const [discarding, setDiscarding] = useState(false);
   const blocked = !submitted && !openQuote && !revisingClosed && !discarding;
+  // The blocked back action, kept while the discard dialog is open. Since expo-router 58,
+  // dispatching it again is blocked again; its repeat() lifts the block, then replays it.
+  const replayBack = useRef<(() => void) | null>(null);
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   usePreventRemove(blocked && dirty, ({ repeat }) => {
-    Alert.alert(
-      revisingId ? "Discard your changes?" : "Discard this offer?",
-      revisingId
-        ? "Your quote stays as it was before you started editing."
-        : "The details you entered will be lost.",
-      [
-        { text: "Keep editing", style: "cancel" },
-        {
-          text: "Discard",
-          style: "destructive",
-          // Since expo-router 58, dispatching the blocked action is blocked again. repeat()
-          // lifts the block first, then replays the back action.
-          onPress: () => {
-            setDiscarding(true);
-            repeat();
-          },
-        },
-      ],
-    );
+    replayBack.current = repeat;
+    setConfirmingDiscard(true);
   });
 
   /** Every problem at once, in on-screen order. Each step shows only its own. */
@@ -1010,6 +997,23 @@ export default function QuoteScreen() {
           ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
+      <ConfirmDialog
+        visible={confirmingDiscard}
+        title={revisingId ? "Discard your changes?" : "Discard this offer?"}
+        message={
+          revisingId
+            ? "Your quote stays as it was before you started editing."
+            : "The details you entered will be lost."
+        }
+        cancelLabel="Keep editing"
+        confirmLabel="Discard"
+        destructive
+        onClose={() => setConfirmingDiscard(false)}
+        onConfirm={() => {
+          setDiscarding(true);
+          replayBack.current?.();
+        }}
+      />
     </ThemedView>
   );
 }

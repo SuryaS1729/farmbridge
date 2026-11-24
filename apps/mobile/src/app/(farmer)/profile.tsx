@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { useState } from "react";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { router, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Card } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -34,19 +36,12 @@ export default function ProfileScreen() {
   const name = profileResult.data?.profile?.aadhaarName?.trim();
   const addressCount = addressResult.data?.addresses.length;
 
-  function confirmSignOut() {
-    Alert.alert("Sign out?", "You'll need an SMS code to sign in again.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Sign out",
-        style: "destructive",
-        onPress: () => {
-          // Forget this farmer in analytics so the next person on a shared phone isn't linked to them.
-          posthog?.reset();
-          void authClient.signOut();
-        },
-      },
-    ]);
+  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
+
+  function signOut() {
+    // Forget this farmer in analytics so the next person on a shared phone isn't linked to them.
+    posthog?.reset();
+    void authClient.signOut();
   }
 
   return (
@@ -124,9 +119,19 @@ export default function ProfileScreen() {
         </Card>
 
         <Card style={styles.menu}>
-          <MenuRow icon="logout" title="Sign out" onPress={confirmSignOut} />
+          <MenuRow icon="logout" title="Sign out" onPress={() => setConfirmingSignOut(true)} />
         </Card>
       </ScrollView>
+      <ConfirmDialog
+        visible={confirmingSignOut}
+        title="Sign out?"
+        message="You'll need an SMS code to sign in again."
+        cancelLabel="Cancel"
+        confirmLabel="Sign out"
+        destructive
+        onClose={() => setConfirmingSignOut(false)}
+        onConfirm={signOut}
+      />
     </ThemedView>
   );
 }
