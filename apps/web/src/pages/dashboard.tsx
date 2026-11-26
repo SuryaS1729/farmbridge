@@ -243,6 +243,52 @@ function convertPriceInput(value: string, from: PriceUnit, to: PriceUnit) {
   return formatPrice(`${tenThousandthsPerKg / 100n}.${(tenThousandthsPerKg % 100n).toString().padStart(2, '0')}`)
 }
 
+/** A valid price as integer paise per quintal (equal to ten-thousandths of a rupee per kg). */
+function paisePerQuintal(value: string, unit: PriceUnit) {
+  const [whole, fraction = ''] = value.split('.')
+  return unit === 'quintal'
+    ? BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'))
+    : BigInt(whole) * 10_000n + BigInt(fraction.padEnd(4, '0'))
+}
+
+// A change this large from the current price gets an extra warning in the confirm dialog,
+// to catch a slipped digit or the wrong unit before farmers see it.
+const LARGE_PRICE_CHANGE_PERCENT = 10
+
+type PriceConfirmation = {
+  priceUnit: PriceUnit
+  basePrice: string
+  perQuintal: string
+  perKg: string
+  /** Change from the current published price, or null when nothing is published yet. */
+  change: { perQuintal: string; percent: number } | null
+}
+
+function buildPriceConfirmation(
+  basePrice: string,
+  priceUnit: PriceUnit,
+  current: DailyPrice | null | undefined,
+): PriceConfirmation {
+  let change: PriceConfirmation['change'] = null
+  if (current) {
+    const next = paisePerQuintal(basePrice, priceUnit)
+    const previous = paisePerQuintal(current.basePricePerKg, 'kg')
+    const diff = next - previous
+    const abs = diff < 0n ? -diff : diff
+    change = {
+      perQuintal: `${diff < 0n ? '−' : '+'}${formatPrice(`${abs / 100n}.${(abs % 100n).toString().padStart(2, '0')}`)}`,
+      percent: previous === 0n ? Infinity : (Number(diff) / Number(previous)) * 100,
+    }
+  }
+  return {
+    priceUnit,
+    basePrice,
+    perQuintal: priceUnit === 'quintal' ? formatPrice(basePrice) : convertPriceInput(basePrice, 'kg', 'quintal'),
+    perKg: priceUnit === 'kg' ? formatPrice(basePrice) : convertPriceInput(basePrice, 'quintal', 'kg'),
+    change,
+  }
+}
+
 /** Turns the filter form into API params, or explains which date is malformed. */
 function buildOfferParams(
   filters: OfferFilters,
@@ -301,7 +347,9 @@ export function DashboardPage() {
   const [notice, setNotice] = useState<string | null>(null)
   const [priceInput, setPriceInput] = useState('')
   const [priceInputSeeded, setPriceInputSeeded] = useState(false)
-  const [priceUnit, setPriceUnit] = useState<PriceUnit>('quintal')
+  const [priceUnit, setPriceUnit] = useState<PriceUnit>('kg')
+  const [confirmingPrice, setConfirmingPrice] = useState<PriceConfirmation | null>(null)
+  const [priceConfirmError, setPriceConfirmError] = useState<string | null>(null)
   const [offerFilter, setOfferFilter] = useState<OfferFilter>('open')
   // `offerFilters` is the form being typed; `appliedOfferParams` is what the query uses.
   const [offerFilters, setOfferFilters] = useState<OfferFilters>(emptyOfferFilters)
@@ -482,12 +530,14 @@ export function DashboardPage() {
     }
   }
 
-  async function publishPrice(event: React.FormEvent<HTMLFormElement>) {
+  // Submitting the form only opens the confirm dialog; the price is sent from there.
+  function reviewPrice(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError(null)
     setNotice(null)
 
-    if (!pricePatterns[priceUnit].test(priceInput)) {
+    const basePrice = priceInput.trim()
+    if (!pricePatterns[priceUnit].test(basePrice)) {
       setError(
         priceUnit === 'kg'
           ? 'Enter a kg price with up to four decimal places.'
@@ -495,13 +545,24 @@ export function DashboardPage() {
       )
       return
     }
+    if (paisePerQuintal(basePrice, priceUnit) === 0n) {
+      setError('Enter a base price above ₹0.')
+      return
+    }
 
+    setPriceConfirmError(null)
+    setConfirmingPrice(buildPriceConfirmation(basePrice, priceUnit, today?.price))
+  }
+
+  async function publishPrice(confirmation: PriceConfirmation) {
+    setPriceConfirmError(null)
     try {
-      await publishMutation.mutateAsync({ priceUnit, basePrice: priceInput })
+      await publishMutation.mutateAsync({ priceUnit: confirmation.priceUnit, basePrice: confirmation.basePrice })
+      setConfirmingPrice(null)
       setPriceInput(priceInputFor(queryClient.getQueryData<TodayPrice>(queryKeys.todayPrice), priceUnit))
       setNotice('Today’s Cocoa price is published.')
     } catch (requestError) {
-      setError(getErrorMessage(requestError))
+      setPriceConfirmError(getErrorMessage(requestError))
     }
   }
 
@@ -569,17 +630,17 @@ export function DashboardPage() {
                 </div>
 
                 <p className="text-xs/relaxed text-muted-foreground">
-                  Enter the daily base price per quintal or per kg (1 quintal = 100 kg).
+                  Enter the daily base price per kg or per quintal (1 quintal = 100 kg).
                   The API stores the per-kg price used by the farmer app and quote checks.
                 </p>
 
-                <form className="grid gap-2" onSubmit={publishPrice}>
+                <form className="grid gap-2" onSubmit={reviewPrice}>
                   <Label htmlFor="price">
                     Daily base price{' '}
                     <span className="text-muted-foreground">(INR per {priceUnit === 'kg' ? 'kg' : 'quintal'})</span>
                   </Label>
                   <div className="flex gap-1" role="group" aria-label="Price unit">
-                    {(['quintal', 'kg'] as const).map((unit) => (
+                    {(['kg', 'quintal'] as const).map((unit) => (
                       <Button
                         key={unit}
                         type="button"
@@ -843,6 +904,81 @@ export function DashboardPage() {
             </p>
             </CardContent>
           </Card>
+
+          <AlertDialog
+            open={confirmingPrice !== null}
+            onOpenChange={(open) => {
+              if (!open && !publishMutation.isPending) setConfirmingPrice(null)
+            }}
+          >
+            <AlertDialogContent>
+              {confirmingPrice ? (
+                <>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      {today?.price ? 'Update today’s Cocoa price?' : 'Publish today’s Cocoa price?'}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Check the base price before publishing. Farmers see it straight away
+                      {today ? ` for ${formatDateForIndia(today.businessDate)}` : ''}, and pending quotes
+                      may be flagged for the farmer to revise.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <p className="flex items-baseline justify-center gap-1 font-heading tabular-nums">
+                    <span className="text-xl text-muted-foreground">₹</span>
+                    <span className="text-4xl">
+                      {confirmingPrice.priceUnit === 'kg' ? confirmingPrice.perKg : confirmingPrice.perQuintal}
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      / {confirmingPrice.priceUnit === 'kg' ? 'kg' : 'quintal'}
+                    </span>
+                  </p>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-1 bg-muted px-3 py-2 text-xs">
+                    <dt className="text-muted-foreground">Per quintal</dt>
+                    <dd className="text-right tabular-nums">₹{confirmingPrice.perQuintal}</dd>
+                    <dt className="text-muted-foreground">Per kg</dt>
+                    <dd className="text-right tabular-nums">₹{confirmingPrice.perKg}</dd>
+                    {today?.price && confirmingPrice.change ? (
+                      <>
+                        <dt className="text-muted-foreground">Current price</dt>
+                        <dd className="text-right tabular-nums">
+                          ₹{formatPrice(today.price.basePricePerQuintal)} / quintal
+                        </dd>
+                        <dt className="text-muted-foreground">Change</dt>
+                        <dd className="text-right tabular-nums">
+                          {confirmingPrice.change.percent === 0
+                            ? 'No change'
+                            : `${confirmingPrice.change.perQuintal} / quintal (${confirmingPrice.change.percent > 0 ? '+' : '−'}${Math.abs(confirmingPrice.change.percent).toFixed(1)}%)`}
+                        </dd>
+                      </>
+                    ) : null}
+                  </dl>
+                  {confirmingPrice.change && Math.abs(confirmingPrice.change.percent) >= LARGE_PRICE_CHANGE_PERCENT ? (
+                    <Alert variant="destructive">
+                      <AlertDescription>
+                        This is a {Math.abs(confirmingPrice.change.percent).toFixed(1)}% change from the current
+                        price. Make sure the amount and unit are right.
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
+                  {priceConfirmError ? (
+                    <p className="text-xs text-destructive" role="alert">{priceConfirmError}</p>
+                  ) : null}
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={publishMutation.isPending}>Go back and edit</AlertDialogCancel>
+                    <AlertDialogAction
+                      disabled={publishMutation.isPending}
+                      onClick={() => void publishPrice(confirmingPrice)}
+                    >
+                      {publishMutation.isPending
+                        ? 'Publishing…'
+                        : `Publish ₹${confirmingPrice.priceUnit === 'kg' ? `${confirmingPrice.perKg} / kg` : `${confirmingPrice.perQuintal} / quintal`}`}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </>
+              ) : null}
+            </AlertDialogContent>
+          </AlertDialog>
 
           <AlertDialog
             open={acceptingOffer !== null}
