@@ -767,6 +767,7 @@ export default function QuoteScreen() {
                         onChange={changeUnit}
                       />
                     }
+                    unit={quantityUnit === "quintal" ? "quintal" : "kg"}
                     error={fieldErrors.quantity}
                     fieldRef={fieldRef("quantity")}
                     value={fields.quantity}

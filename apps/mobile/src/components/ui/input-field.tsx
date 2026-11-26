@@ -17,6 +17,7 @@ export function InputField({
   error,
   fieldRef,
   accessory,
+  unit,
   inputProps,
 }: {
   label: string;
@@ -31,6 +32,8 @@ export function InputField({
   fieldRef?: (node: HostInstance | null) => void;
   /** Shown at the right of the label, e.g. a unit switch. */
   accessory?: ReactNode;
+  /** Shown in a segment at the right of the input, e.g. "kg" or "quintal". */
+  unit?: string;
   /** Extra TextInput props, e.g. autoCapitalize or maxLength. */
   inputProps?: TextInputProps;
 }) {
@@ -44,24 +47,36 @@ export function InputField({
         </ThemedText>
         {accessory}
       </View>
-      <TextInput
-        {...inputProps}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={theme.textSecondary}
-        keyboardType={keyboardType}
+      <View
         style={[
-          styles.input,
+          styles.box,
           {
-            color: theme.text,
             backgroundColor: theme.backgroundElement,
             borderColor: error ? theme.danger : theme.border,
           },
         ]}
-        accessibilityLabel={label}
-        accessibilityHint={hint}
-      />
+      >
+        <TextInput
+          {...inputProps}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={theme.textSecondary}
+          keyboardType={keyboardType}
+          style={[styles.input, { color: theme.text }]}
+          accessibilityLabel={unit ? `${label}, in ${unit}` : label}
+          accessibilityHint={hint}
+        />
+        {unit ? (
+          <View
+            style={[styles.unit, { backgroundColor: theme.backgroundSubtle, borderLeftColor: theme.border }]}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            <ThemedText type="smallBold">{unit}</ThemedText>
+          </View>
+        ) : null}
+      </View>
       {hint ? (
         <ThemedText type="small" themeColor="textSecondary">
           {hint}
@@ -80,11 +95,23 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: Space.two,
   },
-  input: {
+  box: {
+    flexDirection: "row",
     minHeight: 54,
-    paddingHorizontal: Space.three,
     borderWidth: 1,
     borderRadius: Radius.control,
+    overflow: "hidden",
+  },
+  unit: {
+    minWidth: 76,
+    paddingHorizontal: Space.three,
+    alignItems: "center",
+    justifyContent: "center",
+    borderLeftWidth: 1,
+  },
+  input: {
+    flex: 1,
+    paddingHorizontal: Space.three,
     fontFamily: Fonts.sans,
     fontSize: 17,
   },

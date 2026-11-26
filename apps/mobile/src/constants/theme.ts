@@ -6,6 +6,8 @@ import { Platform } from "react-native";
 export const Palette = {
   bone: "#F2EFE7",
   paper: "#FBFAF6",
+  // Halfway between paper and bone: a faint tint for segments inside an input.
+  linen: "#F7F5EF",
   ink: "#15150F",
   muted: "#5E5D50",
   rule: "#D9D5C7",
@@ -32,6 +34,7 @@ export const Colors = {
     background: Palette.bone,
     backgroundElement: Palette.paper,
     backgroundSelected: Palette.rule,
+    backgroundSubtle: Palette.linen,
     textSecondary: Palette.muted,
     ink: Palette.ink,
     paper: Palette.paper,
@@ -51,6 +54,8 @@ export const Colors = {
     background: Palette.dark,
     backgroundElement: Palette.ink,
     backgroundSelected: Palette.muted,
+    // Halfway between ink (inputs) and the dark page.
+    backgroundSubtle: "#191B14",
     textSecondary: Palette.onDark,
     ink: Palette.ink,
     paper: Palette.paper,
