@@ -10,6 +10,7 @@ import {
   type FieldErrors,
 } from "@/components/form-errors";
 import { Button } from "@/components/ui/button";
+import { enterKeyProps } from "@/components/ui/form-keyboard-toolbar";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Space } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
@@ -160,6 +161,7 @@ export function FarmDetailsForm({
           autoComplete="name"
           textContentType="name"
           maxLength={100}
+          {...enterKeyProps("next")}
         />
       </Field>
 
@@ -181,6 +183,7 @@ export function FarmDetailsForm({
           placeholder="Village name"
           autoCapitalize="words"
           maxLength={80}
+          {...enterKeyProps("next")}
         />
       </Field>
 
@@ -193,6 +196,7 @@ export function FarmDetailsForm({
           placeholder="Mandal name"
           autoCapitalize="words"
           maxLength={80}
+          {...enterKeyProps("next")}
         />
       </Field>
 
@@ -207,6 +211,7 @@ export function FarmDetailsForm({
               placeholder="2.5"
               keyboardType="decimal-pad"
               maxLength={9}
+              {...enterKeyProps("next")}
             />
           </Field>
         </View>
@@ -220,6 +225,7 @@ export function FarmDetailsForm({
               placeholder="450"
               keyboardType="number-pad"
               maxLength={8}
+              {...enterKeyProps("done")}
             />
           </Field>
         </View>

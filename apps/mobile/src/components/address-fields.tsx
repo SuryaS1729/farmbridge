@@ -1,6 +1,7 @@
 import { StyleSheet, TextInput, View } from "react-native";
 
 import { FieldError, type FieldErrors } from "@/components/form-errors";
+import { enterKeyProps } from "@/components/ui/form-keyboard-toolbar";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Space } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
@@ -58,6 +59,8 @@ export function AddressFields({
           placeholderTextColor={theme.textSecondary}
           maxLength={40}
           editable={!disabled}
+          // Enter moves on to the address text, keeping the keyboard open.
+          {...enterKeyProps("next")}
           style={[styles.input, inputColors, errors.label ? { borderColor: theme.danger } : null]}
           accessibilityLabel="Address name"
         />

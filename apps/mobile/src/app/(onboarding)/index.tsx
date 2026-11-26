@@ -3,14 +3,11 @@ import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   BackHandler,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
-  ScrollView,
-  type ScrollViewInstance,
   StyleSheet,
   View,
 } from "react-native";
+import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from "react-native-keyboard-controller";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -32,6 +29,7 @@ import {
 import { FormError, hasErrors, useScrollToField, type FieldErrors } from "@/components/form-errors";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { FORM_KEYBOARD_BOTTOM_OFFSET, FormKeyboardToolbar } from "@/components/ui/form-keyboard-toolbar";
 import { InputField } from "@/components/ui/input-field";
 import { StepProgress } from "@/components/ui/step-progress";
 import { ThemedText } from "@/components/themed-text";
@@ -66,7 +64,7 @@ export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
   const queryClient = useQueryClient();
-  const scrollRef = useRef<ScrollViewInstance>(null);
+  const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
   const { fieldRef, scrollToFirst } = useScrollToField(scrollRef);
   const { data: session } = authClient.useSession();
   const phoneNumber = (session?.user as { phoneNumber?: string | null } | undefined)?.phoneNumber;
@@ -179,199 +177,202 @@ export default function OnboardingScreen() {
 
   return (
     <ThemedView style={styles.screen}>
-      <KeyboardAvoidingView
+      {/* Scrolls the focused field above the keyboard and the toolbar on top of it. */}
+      <KeyboardAwareScrollView
+        ref={scrollRef}
         style={styles.screen}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        bottomOffset={FORM_KEYBOARD_BOTTOM_OFFSET}
+        contentContainerStyle={[
+          styles.scrollContent,
+          {
+            paddingTop: insets.top + Space.four,
+            paddingBottom: insets.bottom + Space.six,
+          },
+        ]}
+        keyboardShouldPersistTaps="handled"
       >
-        <ScrollView
-          ref={scrollRef}
-          contentContainerStyle={[
-            styles.scrollContent,
-            {
-              paddingTop: insets.top + Space.four,
-              paddingBottom: insets.bottom + Space.six,
-            },
-          ]}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={styles.content}>
-            <View style={styles.brandBar}>
-              {step > 0 ? (
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => showStep((step - 1) as Step)}
-                  disabled={saving}
-                  hitSlop={8}
-                >
-                  <ThemedText type="smallBold">← Back</ThemedText>
-                </Pressable>
-              ) : (
-                <ThemedText type="smallBold" style={styles.wordmark}>
-                  FARMBRIDGE
-                </ThemedText>
-              )}
-              <ThemedText type="label" themeColor="textSecondary">
-                ANDHRA PRADESH
+        <View style={styles.content}>
+          <View style={styles.brandBar}>
+            {step > 0 ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => showStep((step - 1) as Step)}
+                disabled={saving}
+                hitSlop={8}
+              >
+                <ThemedText type="smallBold">← Back</ThemedText>
+              </Pressable>
+            ) : (
+              <ThemedText type="smallBold" style={styles.wordmark}>
+                FARMBRIDGE
               </ThemedText>
-            </View>
-
-            <View style={styles.intro}>
-              <StepProgress step={step} total={3} />
-              <ThemedText type="title">{STEP_TITLES[step]}</ThemedText>
-              {step === 0 ? (
-                <ThemedText themeColor="textSecondary">
-                  Welcome to FarmBridge. Three quick questions and you can start selling your cocoa.
-                </ThemedText>
-              ) : null}
-            </View>
-
-            {/* Keyed by step so each step fades in instead of swapping abruptly. */}
-            <Animated.View key={step} entering={FadeIn.duration(180)}>
-              <Card style={styles.card}>
-                {step === 0 ? (
-                  <>
-                    <InputField
-                      label="NAME (AS ON AADHAAR CARD)"
-                      value={values.aadhaarName}
-                      onChangeText={(text) => setValue("aadhaarName", text)}
-                      placeholder="e.g. Kollu Venkata Rao"
-                      hint="Write it exactly as it appears on your Aadhaar card."
-                      error={fieldErrors.aadhaarName}
-                      fieldRef={fieldRef("aadhaarName")}
-                      inputProps={{
-                        autoCapitalize: "words",
-                        autoComplete: "name",
-                        textContentType: "name",
-                        maxLength: 100,
-                      }}
-                    />
-                    <View style={[styles.phoneRow, { borderColor: theme.border }]}>
-                      <View style={styles.phoneText}>
-                        <ThemedText type="label" themeColor="textSecondary">
-                          YOUR PHONE
-                        </ThemedText>
-                        <ThemedText type="smallBold">{formatPhone(phoneNumber)}</ThemedText>
-                      </View>
-                      <ThemedText type="label" style={{ color: theme.accent }}>
-                        ✓ VERIFIED
-                      </ThemedText>
-                    </View>
-                  </>
-                ) : step === 1 ? (
-                  <>
-                    <InputField
-                      label="VILLAGE"
-                      value={values.village}
-                      onChangeText={(text) => setValue("village", text)}
-                      placeholder="Village name"
-                      error={fieldErrors.village}
-                      fieldRef={fieldRef("village")}
-                      inputProps={{ autoCapitalize: "words", maxLength: 80 }}
-                    />
-                    <InputField
-                      label="MANDAL"
-                      value={values.mandal}
-                      onChangeText={(text) => setValue("mandal", text)}
-                      placeholder="Mandal name"
-                      error={fieldErrors.mandal}
-                      fieldRef={fieldRef("mandal")}
-                      inputProps={{ autoCapitalize: "words", maxLength: 80 }}
-                    />
-                    <View style={[styles.addressSection, { borderTopColor: theme.border }]}>
-                      <ThemedText type="smallBold">Pickup address</ThemedText>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        Where our driver collects your cocoa. You can change it or add more addresses later in Profile.
-                      </ThemedText>
-                      {addressesLoading ? (
-                        <ActivityIndicator />
-                      ) : savedAddress ? (
-                        <View style={[styles.savedAddress, { borderColor: theme.border }]}>
-                          <ThemedText type="smallBold">{savedAddress.label}</ThemedText>
-                          <ThemedText type="small" themeColor="textSecondary">
-                            {savedAddress.address}
-                          </ThemedText>
-                        </View>
-                      ) : (
-                        <View
-                          // The scroll target for a problem in the address's name or text.
-                          ref={(node) => {
-                            fieldRef("addressLabel")(node);
-                            fieldRef("addressText")(node);
-                          }}
-                        >
-                          <AddressFields
-                            value={address}
-                            onChange={(value, changed) => {
-                              setAddress(value);
-                              const key = changed === "label" ? "addressLabel" : "addressText";
-                              setFieldErrors((current) => ({ ...current, [key]: undefined }));
-                            }}
-                            errors={{ label: fieldErrors.addressLabel, address: fieldErrors.addressText }}
-                          />
-                        </View>
-                      )}
-                    </View>
-                  </>
-                ) : (
-                  <>
-                    <InputField
-                      label="COCOA FARM SIZE (ACRES)"
-                      value={values.farmSizeAcres}
-                      onChangeText={(text) => setValue("farmSizeAcres", onlyAcres(text))}
-                      placeholder="e.g. 2.5"
-                      hint="Only the land with cocoa trees."
-                      keyboardType="decimal-pad"
-                      error={fieldErrors.farmSizeAcres}
-                      fieldRef={fieldRef("farmSizeAcres")}
-                      inputProps={{ maxLength: 9 }}
-                    />
-                    <InputField
-                      label="NUMBER OF COCOA TREES"
-                      value={values.cocoaTreeCount}
-                      onChangeText={(text) => setValue("cocoaTreeCount", onlyDigits(text))}
-                      placeholder="e.g. 450"
-                      hint="A rough count is fine."
-                      keyboardType="number-pad"
-                      error={fieldErrors.cocoaTreeCount}
-                      fieldRef={fieldRef("cocoaTreeCount")}
-                      inputProps={{ maxLength: 8 }}
-                    />
-                  </>
-                )}
-              </Card>
-            </Animated.View>
-
-            <View style={styles.actions}>
-              <FormError message={error} />
-              <View style={styles.actionRow}>
-                {step > 0 ? (
-                  <Button
-                    label="←  Back"
-                    variant="outline"
-                    style={styles.backAction}
-                    disabled={saving}
-                    onPress={() => showStep((step - 1) as Step)}
-                  />
-                ) : null}
-                <Button
-                  label={step === 2 ? "Start selling  →" : "Next  →"}
-                  style={styles.nextAction}
-                  onPress={next}
-                  loading={saving}
-                  disabled={step === 1 && addressesLoading}
-                />
-              </View>
-              {step === 0 ? (
-                <Pressable onPress={() => authClient.signOut()} style={styles.signOut}>
-                  <ThemedText type="label" themeColor="textSecondary">
-                    WRONG NUMBER? SIGN OUT
-                  </ThemedText>
-                </Pressable>
-              ) : null}
-            </View>
+            )}
+            <ThemedText type="label" themeColor="textSecondary">
+              ANDHRA PRADESH
+            </ThemedText>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+
+          <View style={styles.intro}>
+            <StepProgress step={step} total={3} />
+            <ThemedText type="title">{STEP_TITLES[step]}</ThemedText>
+            {step === 0 ? (
+              <ThemedText themeColor="textSecondary">
+                Welcome to FarmBridge. Three quick questions and you can start selling your cocoa.
+              </ThemedText>
+            ) : null}
+          </View>
+
+          {/* Keyed by step so each step fades in instead of swapping abruptly. */}
+          <Animated.View key={step} entering={FadeIn.duration(180)}>
+            <Card style={styles.card}>
+              {step === 0 ? (
+                <>
+                  <InputField
+                    label="NAME (AS ON AADHAAR CARD)"
+                    value={values.aadhaarName}
+                    onChangeText={(text) => setValue("aadhaarName", text)}
+                    placeholder="e.g. Kollu Venkata Rao"
+                    hint="Write it exactly as it appears on your Aadhaar card."
+                    returnKeyType="done"
+                    error={fieldErrors.aadhaarName}
+                    fieldRef={fieldRef("aadhaarName")}
+                    inputProps={{
+                      autoCapitalize: "words",
+                      autoComplete: "name",
+                      textContentType: "name",
+                      maxLength: 100,
+                    }}
+                  />
+                  <View style={[styles.phoneRow, { borderColor: theme.border }]}>
+                    <View style={styles.phoneText}>
+                      <ThemedText type="label" themeColor="textSecondary">
+                        YOUR PHONE
+                      </ThemedText>
+                      <ThemedText type="smallBold">{formatPhone(phoneNumber)}</ThemedText>
+                    </View>
+                    <ThemedText type="label" style={{ color: theme.accent }}>
+                      ✓ VERIFIED
+                    </ThemedText>
+                  </View>
+                </>
+              ) : step === 1 ? (
+                <>
+                  <InputField
+                    label="VILLAGE"
+                    value={values.village}
+                    onChangeText={(text) => setValue("village", text)}
+                    placeholder="Village name"
+                    error={fieldErrors.village}
+                    fieldRef={fieldRef("village")}
+                    inputProps={{ autoCapitalize: "words", maxLength: 80 }}
+                  />
+                  <InputField
+                    label="MANDAL"
+                    value={values.mandal}
+                    onChangeText={(text) => setValue("mandal", text)}
+                    placeholder="Mandal name"
+                    // Last field unless the new-address fields follow.
+                    returnKeyType={addressesLoading || savedAddress ? "done" : "next"}
+                    error={fieldErrors.mandal}
+                    fieldRef={fieldRef("mandal")}
+                    inputProps={{ autoCapitalize: "words", maxLength: 80 }}
+                  />
+                  <View style={[styles.addressSection, { borderTopColor: theme.border }]}>
+                    <ThemedText type="smallBold">Pickup address</ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      Where our driver collects your cocoa. You can change it or add more addresses later in Profile.
+                    </ThemedText>
+                    {addressesLoading ? (
+                      <ActivityIndicator />
+                    ) : savedAddress ? (
+                      <View style={[styles.savedAddress, { borderColor: theme.border }]}>
+                        <ThemedText type="smallBold">{savedAddress.label}</ThemedText>
+                        <ThemedText type="small" themeColor="textSecondary">
+                          {savedAddress.address}
+                        </ThemedText>
+                      </View>
+                    ) : (
+                      <View
+                        // The scroll target for a problem in the address's name or text.
+                        ref={(node) => {
+                          fieldRef("addressLabel")(node);
+                          fieldRef("addressText")(node);
+                        }}
+                      >
+                        <AddressFields
+                          value={address}
+                          onChange={(value, changed) => {
+                            setAddress(value);
+                            const key = changed === "label" ? "addressLabel" : "addressText";
+                            setFieldErrors((current) => ({ ...current, [key]: undefined }));
+                          }}
+                          errors={{ label: fieldErrors.addressLabel, address: fieldErrors.addressText }}
+                        />
+                      </View>
+                    )}
+                  </View>
+                </>
+              ) : (
+                <>
+                  <InputField
+                    label="COCOA FARM SIZE (ACRES)"
+                    value={values.farmSizeAcres}
+                    onChangeText={(text) => setValue("farmSizeAcres", onlyAcres(text))}
+                    placeholder="e.g. 2.5"
+                    hint="Only the land with cocoa trees."
+                    keyboardType="decimal-pad"
+                    error={fieldErrors.farmSizeAcres}
+                    fieldRef={fieldRef("farmSizeAcres")}
+                    inputProps={{ maxLength: 9 }}
+                  />
+                  <InputField
+                    label="NUMBER OF COCOA TREES"
+                    value={values.cocoaTreeCount}
+                    onChangeText={(text) => setValue("cocoaTreeCount", onlyDigits(text))}
+                    placeholder="e.g. 450"
+                    hint="A rough count is fine."
+                    returnKeyType="done"
+                    keyboardType="number-pad"
+                    error={fieldErrors.cocoaTreeCount}
+                    fieldRef={fieldRef("cocoaTreeCount")}
+                    inputProps={{ maxLength: 8 }}
+                  />
+                </>
+              )}
+            </Card>
+          </Animated.View>
+
+          <View style={styles.actions}>
+            <FormError message={error} />
+            <View style={styles.actionRow}>
+              {step > 0 ? (
+                <Button
+                  label="←  Back"
+                  variant="outline"
+                  style={styles.backAction}
+                  disabled={saving}
+                  onPress={() => showStep((step - 1) as Step)}
+                />
+              ) : null}
+              <Button
+                label={step === 2 ? "Start selling  →" : "Next  →"}
+                style={styles.nextAction}
+                onPress={next}
+                loading={saving}
+                disabled={step === 1 && addressesLoading}
+              />
+            </View>
+            {step === 0 ? (
+              <Pressable onPress={() => authClient.signOut()} style={styles.signOut}>
+                <ThemedText type="label" themeColor="textSecondary">
+                  WRONG NUMBER? SIGN OUT
+                </ThemedText>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+      </KeyboardAwareScrollView>
+      <FormKeyboardToolbar />
     </ThemedView>
   );
 }

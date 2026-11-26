@@ -6,6 +6,7 @@ import { useFonts } from 'expo-font';
 import { Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { PostHogProvider } from 'posthog-react-native';
 import { posthog } from '@/lib/posthog';
 import { profileQuery } from '@/lib/queries';
@@ -32,9 +33,12 @@ function ScreenTracker() {
 // so the root layout itself can use queries, e.g. for the onboarding check.
 export default function RootLayout() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AppRoot />
-    </QueryClientProvider>
+    // KeyboardProvider tracks the keyboard for react-native-keyboard-controller's components.
+    <KeyboardProvider>
+      <QueryClientProvider client={queryClient}>
+        <AppRoot />
+      </QueryClientProvider>
+    </KeyboardProvider>
   );
 }
 

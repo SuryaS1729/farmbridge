@@ -2,14 +2,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   View,
 } from "react-native";
 import { router } from "expo-router";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -23,6 +21,7 @@ import { FormError, hasErrors } from "@/components/form-errors";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { FORM_KEYBOARD_BOTTOM_OFFSET, FormKeyboardToolbar } from "@/components/ui/form-keyboard-toolbar";
 import { Icon } from "@/components/ui/icon";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -140,156 +139,155 @@ export default function AddressesScreen() {
 
   return (
     <ThemedView style={styles.screen}>
-      <KeyboardAvoidingView
+      {/* Scrolls the focused field above the keyboard and the toolbar on top of it. */}
+      <KeyboardAwareScrollView
         style={styles.screen}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        bottomOffset={FORM_KEYBOARD_BOTTOM_OFFSET}
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingTop: insets.top + Space.four,
+            paddingBottom: insets.bottom + Space.seven,
+          },
+        ]}
+        keyboardShouldPersistTaps="handled"
       >
-        <ScrollView
-          contentContainerStyle={[
-            styles.content,
-            {
-              paddingTop: insets.top + Space.four,
-              paddingBottom: insets.bottom + Space.seven,
-            },
-          ]}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={styles.topline}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.back()}
-              style={styles.backButton}
-            >
-              <ThemedText type="smallBold">← Profile</ThemedText>
-            </Pressable>
+        <View style={styles.topline}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.back()}
+            style={styles.backButton}
+          >
+            <ThemedText type="smallBold">← Profile</ThemedText>
+          </Pressable>
+          <ThemedText type="label" themeColor="textSecondary">
+            {addresses.length} / {MAX_ADDRESSES}
+          </ThemedText>
+        </View>
+
+        <View style={styles.intro}>
+          <ThemedText type="title">Addresses</ThemedText>
+          <ThemedText themeColor="textSecondary">
+            Choose one of these when you send a quote. The driver collects from that address.
+          </ThemedText>
+        </View>
+
+        {loading ? (
+          <ActivityIndicator />
+        ) : loadError ? (
+          <Card style={styles.formBox}>
+            <ThemedText themeColor="textSecondary">{loadError}</ThemedText>
+            <Button
+              label="Try again"
+              variant="outline"
+              onPress={() => void addressResult.refetch()}
+            />
+          </Card>
+        ) : (
+          <View style={styles.section}>
             <ThemedText type="label" themeColor="textSecondary">
-              {addresses.length} / {MAX_ADDRESSES}
+              SAVED ADDRESSES
             </ThemedText>
-          </View>
 
-          <View style={styles.intro}>
-            <ThemedText type="title">Addresses</ThemedText>
-            <ThemedText themeColor="textSecondary">
-              Choose one of these when you send a quote. The driver collects from that address.
-            </ThemedText>
-          </View>
+            {addresses.length === 0 && editing?.id !== "new" ? (
+              <Card>
+                <ThemedText themeColor="textSecondary">
+                  No saved addresses yet. Add one here, or type one on your next quote and we'll
+                  save it.
+                </ThemedText>
+              </Card>
+            ) : null}
 
-          {loading ? (
-            <ActivityIndicator />
-          ) : loadError ? (
-            <Card style={styles.formBox}>
-              <ThemedText themeColor="textSecondary">{loadError}</ThemedText>
-              <Button
-                label="Try again"
-                variant="outline"
-                onPress={() => void addressResult.refetch()}
-              />
-            </Card>
-          ) : (
-            <View style={styles.section}>
-              <ThemedText type="label" themeColor="textSecondary">
-                SAVED ADDRESSES
-              </ThemedText>
-
-              {addresses.length === 0 && editing?.id !== "new" ? (
-                <Card>
-                  <ThemedText themeColor="textSecondary">
-                    No saved addresses yet. Add one here, or type one on your next quote and we'll
-                    save it.
-                  </ThemedText>
-                </Card>
-              ) : null}
-
-              {addresses.length > 0 ? (
-                <Card style={styles.list}>
-                  {addresses.map((address, index) => (
-                    <Fragment key={address.id}>
-                      {index > 0 ? (
-                        <View style={[styles.divider, { backgroundColor: theme.border }]} />
-                      ) : null}
-                      {editing?.id === address.id ? (
-                        <View style={styles.rowPadding}>{addressForm}</View>
-                      ) : (
-                        <View style={[styles.addressRow, styles.rowPadding]}>
-                          <View style={styles.rowIcon}>
-                            <Icon name="home" size={22} color={theme.text} />
+            {addresses.length > 0 ? (
+              <Card style={styles.list}>
+                {addresses.map((address, index) => (
+                  <Fragment key={address.id}>
+                    {index > 0 ? (
+                      <View style={[styles.divider, { backgroundColor: theme.border }]} />
+                    ) : null}
+                    {editing?.id === address.id ? (
+                      <View style={styles.rowPadding}>{addressForm}</View>
+                    ) : (
+                      <View style={[styles.addressRow, styles.rowPadding]}>
+                        <View style={styles.rowIcon}>
+                          <Icon name="home" size={22} color={theme.text} />
+                        </View>
+                        <View style={styles.rowBody}>
+                          <View style={styles.rowTitle}>
+                            <ThemedText type="smallBold">{address.label}</ThemedText>
+                            {address.isDefault ? (
+                              <View
+                                style={[styles.badge, { backgroundColor: theme.accentSoft }]}
+                              >
+                                <ThemedText type="label" themeColor="text">
+                                  DEFAULT
+                                </ThemedText>
+                              </View>
+                            ) : null}
                           </View>
-                          <View style={styles.rowBody}>
-                            <View style={styles.rowTitle}>
-                              <ThemedText type="smallBold">{address.label}</ThemedText>
-                              {address.isDefault ? (
-                                <View
-                                  style={[styles.badge, { backgroundColor: theme.accentSoft }]}
-                                >
-                                  <ThemedText type="label" themeColor="text">
-                                    DEFAULT
-                                  </ThemedText>
-                                </View>
-                              ) : null}
-                            </View>
-                            <ThemedText type="small" themeColor="textSecondary">
-                              {address.address}
-                            </ThemedText>
-                            <View style={styles.actions}>
+                          <ThemedText type="small" themeColor="textSecondary">
+                            {address.address}
+                          </ThemedText>
+                          <View style={styles.actions}>
+                            <TextAction
+                              label="EDIT"
+                              disabled={locked}
+                              onPress={() => {
+                                setError(null);
+                                setFieldErrors({});
+                                setEditing({
+                                  id: address.id,
+                                  value: { label: address.label, address: address.address },
+                                });
+                              }}
+                            />
+                            {!address.isDefault ? (
                               <TextAction
-                                label="EDIT"
+                                label={busyId === address.id ? "SAVING…" : "MAKE DEFAULT"}
                                 disabled={locked}
-                                onPress={() => {
-                                  setError(null);
-                                  setFieldErrors({});
-                                  setEditing({
-                                    id: address.id,
-                                    value: { label: address.label, address: address.address },
-                                  });
-                                }}
+                                onPress={() =>
+                                  void run(address.id, () => setDefaultAddress(address.id))
+                                }
                               />
-                              {!address.isDefault ? (
-                                <TextAction
-                                  label={busyId === address.id ? "SAVING…" : "MAKE DEFAULT"}
-                                  disabled={locked}
-                                  onPress={() =>
-                                    void run(address.id, () => setDefaultAddress(address.id))
-                                  }
-                                />
-                              ) : null}
-                              <TextAction
-                                label="DELETE"
-                                disabled={locked}
-                                onPress={() => confirmDelete(address)}
-                              />
-                            </View>
+                            ) : null}
+                            <TextAction
+                              label="DELETE"
+                              disabled={locked}
+                              onPress={() => confirmDelete(address)}
+                            />
                           </View>
                         </View>
-                      )}
-                    </Fragment>
-                  ))}
-                </Card>
-              ) : null}
+                      </View>
+                    )}
+                  </Fragment>
+                ))}
+              </Card>
+            ) : null}
 
-              {editing?.id === "new" ? (
-                <Card>{addressForm}</Card>
-              ) : addresses.length < MAX_ADDRESSES ? (
-                <Button
-                  label="+ Add new address"
-                  variant="outline"
-                  disabled={locked}
-                  onPress={() => {
-                    setError(null);
-                    setFieldErrors({});
-                    setEditing({
-                      id: "new",
-                      value: addresses.length === 0 ? emptyAddress : { label: "", address: "" },
-                    });
-                  }}
-                />
-              ) : null}
+            {editing?.id === "new" ? (
+              <Card>{addressForm}</Card>
+            ) : addresses.length < MAX_ADDRESSES ? (
+              <Button
+                label="+ Add new address"
+                variant="outline"
+                disabled={locked}
+                onPress={() => {
+                  setError(null);
+                  setFieldErrors({});
+                  setEditing({
+                    id: "new",
+                    value: addresses.length === 0 ? emptyAddress : { label: "", address: "" },
+                  });
+                }}
+              />
+            ) : null}
 
-              {/* While a form is open its own errors show above its buttons. */}
-              {editing ? null : <FormError message={error} />}
-            </View>
-          )}
-        </ScrollView>
-      </KeyboardAvoidingView>
+            {/* While a form is open its own errors show above its buttons. */}
+            {editing ? null : <FormError message={error} />}
+          </View>
+        )}
+      </KeyboardAwareScrollView>
+      <FormKeyboardToolbar />
       <ConfirmDialog
         visible={confirmingDelete}
         title={`Delete "${deleteTarget?.label ?? ""}"?`}

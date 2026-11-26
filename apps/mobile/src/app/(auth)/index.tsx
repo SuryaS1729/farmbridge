@@ -1,11 +1,11 @@
 import { useState } from "react";
 import {
   Pressable,
-  ScrollView,
   StyleSheet,
   TextInput,
   View,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { OtpInput } from "react-native-otp-entry";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -18,6 +18,9 @@ import { useTheme } from "@/hooks/use-theme";
 import { authClient } from "@/lib/auth-client";
 
 const OTP_LENGTH = 6;
+// Keep the main button under the input above the keyboard too: the form gap, the button
+// (52 tall) and a little air.
+const BUTTON_BELOW_INPUT = Space.three + 52 + Space.four;
 const PHONE_LENGTH = 10;
 
 export default function SignInScreen() {
@@ -102,7 +105,9 @@ export default function SignInScreen() {
 
   return (
     <ThemedView style={styles.screen}>
-      <ScrollView
+      {/* Scrolls the number box or code cells, and the button under them, above the keyboard. */}
+      <KeyboardAwareScrollView
+        bottomOffset={BUTTON_BELOW_INPUT}
         contentContainerStyle={[
           styles.scrollContent,
           {
@@ -254,7 +259,7 @@ export default function SignInScreen() {
           )}
 
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </ThemedView>
   );
 }

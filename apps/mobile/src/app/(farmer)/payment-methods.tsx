@@ -1,21 +1,20 @@
 import { useState } from "react";
 import {
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   TextInput,
   View,
   type TextInputProps,
 } from "react-native";
 import { router } from "expo-router";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { FormError } from "@/components/form-errors";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { enterKeyProps, FORM_KEYBOARD_BOTTOM_OFFSET, FormKeyboardToolbar } from "@/components/ui/form-keyboard-toolbar";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Fonts, Radius, Space } from "@/constants/theme";
@@ -74,139 +73,143 @@ export default function PaymentMethodsScreen() {
 
   return (
     <ThemedView style={styles.screen}>
-      <KeyboardAvoidingView
+      {/* Scrolls the focused field above the keyboard and the toolbar on top of it. */}
+      <KeyboardAwareScrollView
         style={styles.screen}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        bottomOffset={FORM_KEYBOARD_BOTTOM_OFFSET}
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingTop: insets.top + Space.four,
+            paddingBottom: insets.bottom + Space.seven,
+          },
+        ]}
+        keyboardShouldPersistTaps="handled"
       >
-        <ScrollView
-          contentContainerStyle={[
-            styles.content,
-            {
-              paddingTop: insets.top + Space.four,
-              paddingBottom: insets.bottom + Space.seven,
-            },
-          ]}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={styles.topline}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.back()}
-              style={styles.backButton}
-            >
-              <ThemedText type="smallBold">← Profile</ThemedText>
-            </Pressable>
-            <ThemedText type="label" themeColor="textSecondary">
-              PAYOUTS
-            </ThemedText>
-          </View>
-
-          <View style={styles.intro}>
-            <ThemedText type="title">Payment methods</ThemedText>
-            <ThemedText themeColor="textSecondary">
-              We pay you here once your cocoa is collected and checked.
-            </ThemedText>
-          </View>
-
-          <View
-            accessibilityRole="tablist"
-            style={[
-              styles.toggle,
-              { borderColor: theme.border, backgroundColor: theme.backgroundElement },
-            ]}
+        <View style={styles.topline}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.back()}
+            style={styles.backButton}
           >
-            {(
-              [
-                ["upi", "UPI"],
-                ["bank", "Bank account"],
-              ] as const
-            ).map(([value, label]) => {
-              const selected = method === value;
-              return (
-                <Pressable
-                  key={value}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected }}
-                  onPress={() => {
-                    setMethod(value);
-                    setError(null);
-                  }}
-                  style={[styles.toggleButton, selected && { backgroundColor: theme.accent }]}
+            <ThemedText type="smallBold">← Profile</ThemedText>
+          </Pressable>
+          <ThemedText type="label" themeColor="textSecondary">
+            PAYOUTS
+          </ThemedText>
+        </View>
+
+        <View style={styles.intro}>
+          <ThemedText type="title">Payment methods</ThemedText>
+          <ThemedText themeColor="textSecondary">
+            We pay you here once your cocoa is collected and checked.
+          </ThemedText>
+        </View>
+
+        <View
+          accessibilityRole="tablist"
+          style={[
+            styles.toggle,
+            { borderColor: theme.border, backgroundColor: theme.backgroundElement },
+          ]}
+        >
+          {(
+            [
+              ["upi", "UPI"],
+              ["bank", "Bank account"],
+            ] as const
+          ).map(([value, label]) => {
+            const selected = method === value;
+            return (
+              <Pressable
+                key={value}
+                accessibilityRole="tab"
+                accessibilityState={{ selected }}
+                onPress={() => {
+                  setMethod(value);
+                  setError(null);
+                }}
+                style={[styles.toggleButton, selected && { backgroundColor: theme.accent }]}
+              >
+                <ThemedText
+                  type="smallBold"
+                  themeColor={selected ? "accentText" : "textSecondary"}
                 >
-                  <ThemedText
-                    type="smallBold"
-                    themeColor={selected ? "accentText" : "textSecondary"}
-                  >
-                    {label}
-                  </ThemedText>
-                </Pressable>
-              );
-            })}
-          </View>
+                  {label}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+        </View>
 
-          <Card style={styles.form}>
-            {method === "upi" ? (
+        <Card style={styles.form}>
+          {method === "upi" ? (
+            <Field
+              label="UPI ID"
+              hint="Find it in PhonePe, Google Pay or Paytm under your profile."
+              value={upiId}
+              onChangeText={setUpiId}
+              placeholder="9876543210@ybl"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              {...enterKeyProps("done")}
+            />
+          ) : (
+            <>
               <Field
-                label="UPI ID"
-                hint="Find it in PhonePe, Google Pay or Paytm under your profile."
-                value={upiId}
-                onChangeText={setUpiId}
-                placeholder="9876543210@ybl"
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="email-address"
+                label="Account holder name"
+                value={bank.holderName}
+                onChangeText={(holderName) => setBank({ ...bank, holderName })}
+                placeholder="As printed on your passbook"
+                autoCapitalize="words"
+                {...enterKeyProps("next")}
               />
-            ) : (
-              <>
-                <Field
-                  label="Account holder name"
-                  value={bank.holderName}
-                  onChangeText={(holderName) => setBank({ ...bank, holderName })}
-                  placeholder="As printed on your passbook"
-                  autoCapitalize="words"
-                />
-                <Field
-                  label="Account number"
-                  value={bank.accountNumber}
-                  onChangeText={(text) =>
-                    setBank({ ...bank, accountNumber: text.replace(/\D/g, "") })
-                  }
-                  placeholder="000123456789"
-                  keyboardType="number-pad"
-                  maxLength={18}
-                  secureTextEntry
-                />
-                <Field
-                  label="Confirm account number"
-                  value={bank.confirmAccountNumber}
-                  onChangeText={(text) =>
-                    setBank({ ...bank, confirmAccountNumber: text.replace(/\D/g, "") })
-                  }
-                  placeholder="Type it again"
-                  keyboardType="number-pad"
-                  maxLength={18}
-                />
-                <Field
-                  label="IFSC code"
-                  hint="11 characters, printed on your passbook or cheque."
-                  value={bank.ifsc}
-                  onChangeText={(text) =>
-                    setBank({ ...bank, ifsc: text.toUpperCase().replace(/[^A-Z0-9]/g, "") })
-                  }
-                  placeholder="SBIN0001234"
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  maxLength={11}
-                />
-              </>
-            )}
-          </Card>
+              <Field
+                label="Account number"
+                value={bank.accountNumber}
+                onChangeText={(text) =>
+                  setBank({ ...bank, accountNumber: text.replace(/\D/g, "") })
+                }
+                placeholder="000123456789"
+                keyboardType="number-pad"
+                maxLength={18}
+                secureTextEntry
+                {...enterKeyProps("next")}
+              />
+              <Field
+                label="Confirm account number"
+                value={bank.confirmAccountNumber}
+                onChangeText={(text) =>
+                  setBank({ ...bank, confirmAccountNumber: text.replace(/\D/g, "") })
+                }
+                placeholder="Type it again"
+                keyboardType="number-pad"
+                maxLength={18}
+                {...enterKeyProps("next")}
+              />
+              <Field
+                label="IFSC code"
+                hint="11 characters, printed on your passbook or cheque."
+                value={bank.ifsc}
+                onChangeText={(text) =>
+                  setBank({ ...bank, ifsc: text.toUpperCase().replace(/[^A-Z0-9]/g, "") })
+                }
+                placeholder="SBIN0001234"
+                autoCapitalize="characters"
+                autoCorrect={false}
+                maxLength={11}
+                {...enterKeyProps("done")}
+              />
+            </>
+          )}
+        </Card>
 
-          <FormError message={error} />
+        <FormError message={error} />
 
-          <Button label="Save payment method" onPress={save} />
-        </ScrollView>
-      </KeyboardAvoidingView>
+        <Button label="Save payment method" onPress={save} />
+      </KeyboardAwareScrollView>
+      <FormKeyboardToolbar />
       <ConfirmDialog
         visible={showNotSaved}
         title="Not saved yet"

@@ -2,14 +2,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
-  ScrollView,
-  type ScrollViewInstance,
   StyleSheet,
   View,
 } from "react-native";
+import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from "react-native-keyboard-controller";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { router, useLocalSearchParams } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
@@ -34,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { InputField } from "@/components/ui/input-field";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { FORM_KEYBOARD_BOTTOM_OFFSET, FormKeyboardToolbar } from "@/components/ui/form-keyboard-toolbar";
 import { StepProgress } from "@/components/ui/step-progress";
 import { SegmentedToggle } from "@/components/ui/segmented-toggle";
 import { ThemedText } from "@/components/themed-text";
@@ -264,7 +262,7 @@ export default function QuoteScreen() {
   // A refused submit or lost connection; field problems are shown under each field instead.
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors<QuoteErrorKey>>({});
-  const scrollRef = useRef<ScrollViewInstance>(null);
+  const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
   const { fieldRef, scrollToFirst } = useScrollToField(scrollRef);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [newAddress, setNewAddress] = useState<AddressInput>(emptyAddress);
@@ -641,287 +639,152 @@ export default function QuoteScreen() {
 
   return (
     <ThemedView style={styles.screen}>
-      <KeyboardAvoidingView
+      {/* Scrolls the focused field above the keyboard (and the toolbar on top of it) on both platforms. */}
+      <KeyboardAwareScrollView
+        ref={scrollRef}
         style={styles.screen}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        bottomOffset={FORM_KEYBOARD_BOTTOM_OFFSET}
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingTop: insets.top + Space.four,
+            paddingBottom: insets.bottom + Space.seven,
+          },
+        ]}
+        keyboardShouldPersistTaps="handled"
       >
-        <ScrollView
-          ref={scrollRef}
-          contentContainerStyle={[
-            styles.content,
-            {
-              paddingTop: insets.top + Space.four,
-              paddingBottom: insets.bottom + Space.seven,
-            },
-          ]}
-          keyboardShouldPersistTaps="handled"
-        >
-          {!submitted ? (
-            <View style={styles.topline}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => router.back()}
-                hitSlop={8}
-                style={styles.backButton}
-              >
-                <ThemedText type="smallBold">← Back</ThemedText>
-              </Pressable>
-            </View>
-          ) : null}
-
-          <View style={styles.header}>
-            {inForm && step !== REVIEW && !revising ? (
-              <StepProgress step={step} total={3} fraction={stepFraction} />
-            ) : (
-              <ThemedText type="label" themeColor="textSecondary">
-                {revisingId ? "SELL COCOA · CHANGE QUOTE" : "SELL COCOA"}
-              </ThemedText>
-            )}
-            <ThemedText type="title">{title}</ThemedText>
-            {inForm && step > 0 && step < REVIEW ? null : (
-              <ThemedText themeColor="textSecondary">{subtitle}</ThemedText>
-            )}
+        {!submitted ? (
+          <View style={styles.topline}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.back()}
+              hitSlop={8}
+              style={styles.backButton}
+            >
+              <ThemedText type="smallBold">← Back</ThemedText>
+            </Pressable>
           </View>
+        ) : null}
 
-          {submitted ? (
-            <Card style={styles.formCard}>
-              <ThemedText>
-                {revisingId
-                  ? "Your changes are saved. The buying team will see the new details when they review your quote."
-                  : "You can follow it on your Home screen and in My quotes."}
-              </ThemedText>
-              {/* dismissTo goes back to a My Quotes or Home already in the stack (e.g. a revise
-                  started from My Quotes) instead of stacking a second copy on top. */}
-              <Button label="View my quotes" variant="outline" onPress={() => router.dismissTo("/my-quotes")} />
-              <Button label="Back to Home" onPress={() => router.dismissTo("/(farmer)/(tabs)")} />
-            </Card>
-          ) : waitingForQuote || loadingPrice ? (
-            <Card style={styles.formCard}>
-              <ActivityIndicator />
-              <ThemedText themeColor="textSecondary">
-                {waitingForQuote ? "Loading your quote…" : "Loading today's cocoa price…"}
-              </ThemedText>
-            </Card>
-          ) : revisingClosed ? (
-            <Card style={styles.formCard}>
-              <ThemedText type="label" themeColor="textSecondary">
-                THIS QUOTE CAN NO LONGER BE CHANGED
-              </ThemedText>
-              <ThemedText>
-                The buying team has already decided on it, or it expired at the end of the day. Check My quotes for its status.
-              </ThemedText>
-              <Button label="View my quotes" onPress={() => router.dismissTo("/my-quotes")} />
-            </Card>
-          ) : openQuote ? (
-            <Card style={styles.formCard}>
-              <ThemedText type="label" themeColor="textSecondary">
-                YOU ALREADY HAVE AN OPEN QUOTE
-              </ThemedText>
-              <ThemedText>
-                You can have one open quote at a time. Change that quote instead, or wait for the buying team to decide.
-              </ThemedText>
-              <Button
-                label="Change my open quote  →"
-                onPress={() => {
-                  // Re-pick the address from the open quote once its details load.
-                  setSelectedAddressId(null);
-                  setError(null);
-                  router.setParams({ offerId: openQuote.id });
-                }}
-              />
-            </Card>
-          ) : priceError ? (
-            <Card style={styles.formCard}>
-              <ThemedText themeColor="textSecondary">{priceError}</ThemedText>
-              <Button label="Retry" variant="outline" onPress={() => void priceQuery.refetch()} />
-            </Card>
-          ) : !price ? (
-            <Card style={styles.formCard}>
-              <ThemedText type="label" themeColor="textSecondary">
-                NO PRICE PUBLISHED
-              </ThemedText>
-              <ThemedText themeColor="textSecondary">
-                The buying team has not published today's cocoa price yet. Check back later today.
-              </ThemedText>
-            </Card>
+        <View style={styles.header}>
+          {inForm && step !== REVIEW && !revising ? (
+            <StepProgress step={step} total={3} fraction={stepFraction} />
           ) : (
-            // Keyed by step so each step fades in instead of swapping abruptly.
-            <Animated.View key={step} entering={FadeIn.duration(180)}>
-              {step === 0 ? (
-                <Card style={styles.formCard}>
-                  {needsRevision && revisingQuote ? (
-                    <View style={[styles.notice, { borderColor: theme.accent }]}>
-                      <ThemedText type="smallBold">Today&apos;s price went up</ThemedText>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        {`Raise your price to at least ₹${formatPricePerKg(price.basePricePerKg)}/kg to keep this quote open.`}
-                      </ThemedText>
-                    </View>
-                  ) : null}
-                  <InputField
-                    label="HOW MUCH COCOA?"
-                    accessory={
-                      <SegmentedToggle
-                        accessibilityLabel="Quantity unit"
-                        options={UNIT_OPTIONS}
-                        value={quantityUnit}
-                        onChange={changeUnit}
-                      />
-                    }
-                    unit={quantityUnit === "quintal" ? "quintal" : "kg"}
-                    error={fieldErrors.quantity}
-                    fieldRef={fieldRef("quantity")}
-                    value={fields.quantity}
-                    onChangeText={(value) => setField("quantity", value)}
-                    placeholder={quantityUnit === "quintal" ? "e.g. 2.5" : "e.g. 250"}
-                    hint={quantityUnit === "quintal" ? "1 quintal = 100 kg" : undefined}
-                    keyboardType="decimal-pad"
-                  />
-                  <InputField
-                    label="YOUR PRICE PER KG (₹)"
-                    error={fieldErrors.offeredPricePerKg}
-                    fieldRef={fieldRef("offeredPricePerKg")}
-                    value={fields.offeredPricePerKg}
-                    onChangeText={(value) => setField("offeredPricePerKg", value)}
-                    placeholder={offerPriceFromBase(price.basePricePerKg)}
-                    hint={
-                      quantityUnit === "quintal" && hasPrice
-                        ? `That is ${pricePerQuintal} per quintal. Today's base price is ₹${formatPricePerKg(price.basePricePerKg)}/kg.`
-                        : `Today's base price is ₹${formatPricePerKg(price.basePricePerKg)}/kg. You can offer more.`
-                    }
-                    keyboardType="decimal-pad"
-                  />
-                  {hasEstimate ? (
-                    <View style={[styles.totalBox, { backgroundColor: theme.accentSoft }]}>
-                      <ThemedText type="label" themeColor="textSecondary">
-                        ESTIMATED VALUE
-                      </ThemedText>
-                      <ThemedText type="figure">{formatRupees(estimatedTotal)}</ThemedText>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        {estimateWorking}
-                      </ThemedText>
-                    </View>
-                  ) : null}
-                </Card>
-              ) : step === 1 ? (
-                <Card style={styles.formCard}>
-                  <ThemedText themeColor="textSecondary">
-                    {qualityFromLastQuote
-                      ? "Filled in from your last quote. Change them if these beans are different."
-                      : "Check a sample of the beans you are selling. The buying team confirms these at pickup."}
-                  </ThemedText>
-                  <InputField
-                    label="BEAN MOISTURE (%)"
-                    error={fieldErrors.moisturePercent}
-                    fieldRef={fieldRef("moisturePercent")}
-                    value={fields.moisturePercent}
-                    onChangeText={(value) => setField("moisturePercent", value)}
-                    placeholder="e.g. 7.5"
-                    hint="The reading from a moisture meter."
-                    keyboardType="decimal-pad"
-                  />
-                  <InputField
-                    label="BEAN COUNT PER 100 G"
-                    error={fieldErrors.beanCountPer100g}
-                    fieldRef={fieldRef("beanCountPer100g")}
-                    value={fields.beanCountPer100g}
-                    onChangeText={(value) => setField("beanCountPer100g", value)}
-                    placeholder="e.g. 110"
-                    hint="Weigh 100 g of beans and count them."
-                    keyboardType="number-pad"
-                  />
-                </Card>
-              ) : step === 2 ? (
-                <Card style={styles.formCard}>
-                  <View ref={fieldRef("readyOn")} style={styles.field}>
-                    <ThemedText type="label" themeColor="textSecondary">
-                      WHEN WILL IT BE READY?
+            <ThemedText type="label" themeColor="textSecondary">
+              {revisingId ? "SELL COCOA · CHANGE QUOTE" : "SELL COCOA"}
+            </ThemedText>
+          )}
+          <ThemedText type="title">{title}</ThemedText>
+          {inForm && step > 0 && step < REVIEW ? null : (
+            <ThemedText themeColor="textSecondary">{subtitle}</ThemedText>
+          )}
+        </View>
+
+        {submitted ? (
+          <Card style={styles.formCard}>
+            <ThemedText>
+              {revisingId
+                ? "Your changes are saved. The buying team will see the new details when they review your quote."
+                : "You can follow it on your Home screen and in My quotes."}
+            </ThemedText>
+            {/* dismissTo goes back to a My Quotes or Home already in the stack (e.g. a revise
+                started from My Quotes) instead of stacking a second copy on top. */}
+            <Button label="View my quotes" variant="outline" onPress={() => router.dismissTo("/my-quotes")} />
+            <Button label="Back to Home" onPress={() => router.dismissTo("/(farmer)/(tabs)")} />
+          </Card>
+        ) : waitingForQuote || loadingPrice ? (
+          <Card style={styles.formCard}>
+            <ActivityIndicator />
+            <ThemedText themeColor="textSecondary">
+              {waitingForQuote ? "Loading your quote…" : "Loading today's cocoa price…"}
+            </ThemedText>
+          </Card>
+        ) : revisingClosed ? (
+          <Card style={styles.formCard}>
+            <ThemedText type="label" themeColor="textSecondary">
+              THIS QUOTE CAN NO LONGER BE CHANGED
+            </ThemedText>
+            <ThemedText>
+              The buying team has already decided on it, or it expired at the end of the day. Check My quotes for its status.
+            </ThemedText>
+            <Button label="View my quotes" onPress={() => router.dismissTo("/my-quotes")} />
+          </Card>
+        ) : openQuote ? (
+          <Card style={styles.formCard}>
+            <ThemedText type="label" themeColor="textSecondary">
+              YOU ALREADY HAVE AN OPEN QUOTE
+            </ThemedText>
+            <ThemedText>
+              You can have one open quote at a time. Change that quote instead, or wait for the buying team to decide.
+            </ThemedText>
+            <Button
+              label="Change my open quote  →"
+              onPress={() => {
+                // Re-pick the address from the open quote once its details load.
+                setSelectedAddressId(null);
+                setError(null);
+                router.setParams({ offerId: openQuote.id });
+              }}
+            />
+          </Card>
+        ) : priceError ? (
+          <Card style={styles.formCard}>
+            <ThemedText themeColor="textSecondary">{priceError}</ThemedText>
+            <Button label="Retry" variant="outline" onPress={() => void priceQuery.refetch()} />
+          </Card>
+        ) : !price ? (
+          <Card style={styles.formCard}>
+            <ThemedText type="label" themeColor="textSecondary">
+              NO PRICE PUBLISHED
+            </ThemedText>
+            <ThemedText themeColor="textSecondary">
+              The buying team has not published today's cocoa price yet. Check back later today.
+            </ThemedText>
+          </Card>
+        ) : (
+          // Keyed by step so each step fades in instead of swapping abruptly.
+          <Animated.View key={step} entering={FadeIn.duration(180)}>
+            {step === 0 ? (
+              <Card style={styles.formCard}>
+                {needsRevision && revisingQuote ? (
+                  <View style={[styles.notice, { borderColor: theme.accent }]}>
+                    <ThemedText type="smallBold">Today&apos;s price went up</ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {`Raise your price to at least ₹${formatPricePerKg(price.basePricePerKg)}/kg to keep this quote open.`}
                     </ThemedText>
-                    <ChoiceRow
-                      options={[
-                        { value: "today", label: "Today" },
-                        { value: "tomorrow", label: "Tomorrow" },
-                        {
-                          value: "other",
-                          // Once picked, the button shows the day itself.
-                          label: readyChoice === "other" ? formatDateForIndia(fields.readyOn) : "Another day",
-                        },
-                      ]}
-                      value={readyChoice}
-                      onChange={chooseReadyDay}
-                    />
-                    <DatePicker
-                      open={datePickerOpen}
-                      value={readyChoice === "other" ? fields.readyOn : ""}
-                      minimumDate={today}
-                      onChoose={(value) => {
-                        setDatePickerOpen(false);
-                        setField("readyOn", value);
-                      }}
-                      onClose={() => setDatePickerOpen(false)}
-                    />
-                    <FieldError message={fieldErrors.readyOn} />
                   </View>
-                  <View ref={fieldRef("pickupAddress")} style={styles.field}>
-                    <ThemedText type="label" themeColor="textSecondary">
-                      WHERE SHOULD WE COLLECT IT?
-                    </ThemedText>
-                    {addressesLoading ? (
-                      <ActivityIndicator />
-                    ) : addressesError ? (
-                      <>
-                        <ThemedText type="small" themeColor="textSecondary">{addressesError}</ThemedText>
-                        <Button label="Retry" variant="outline" onPress={() => void addressQuery.refetch()} />
-                      </>
-                    ) : (
-                      <>
-                        {addresses.length > 0 ? (
-                          <AddressPicker
-                            addresses={addresses}
-                            selectedId={selectedAddressId}
-                            onSelect={(id) => {
-                              setSelectedAddressId(id);
-                              setDirty(true);
-                              setFieldErrors((current) => ({
-                                ...current,
-                                pickupAddress: undefined,
-                                addressLabel: undefined,
-                                addressText: undefined,
-                              }));
-                            }}
-                            allowNew
-                          />
-                        ) : (
-                          <ThemedText type="small" themeColor="textSecondary">
-                            Add the address the driver should come to. We&apos;ll save it for next time.
-                          </ThemedText>
-                        )}
-                        <FieldError message={fieldErrors.pickupAddress} />
-                        {usingNewAddress ? (
-                          // The scroll target for a problem in the new address's name or text.
-                          <View
-                            ref={(node) => {
-                              fieldRef("addressLabel")(node);
-                              fieldRef("addressText")(node);
-                            }}
-                          >
-                            <AddressFields
-                              value={newAddress}
-                              onChange={(value, changed) => {
-                                setNewAddress(value);
-                                setDirty(true);
-                                const key = changed === "label" ? "addressLabel" : "addressText";
-                                setFieldErrors((current) => ({ ...current, [key]: undefined }));
-                              }}
-                              errors={{ label: fieldErrors.addressLabel, address: fieldErrors.addressText }}
-                            />
-                          </View>
-                        ) : null}
-                      </>
-                    )}
-                  </View>
-                </Card>
-              ) : (
-                <Card style={styles.formCard}>
+                ) : null}
+                <InputField
+                  label="HOW MUCH COCOA?"
+                  accessory={
+                    <SegmentedToggle
+                      accessibilityLabel="Quantity unit"
+                      options={UNIT_OPTIONS}
+                      value={quantityUnit}
+                      onChange={changeUnit}
+                    />
+                  }
+                  unit={quantityUnit === "quintal" ? "quintal" : "kg"}
+                  error={fieldErrors.quantity}
+                  fieldRef={fieldRef("quantity")}
+                  value={fields.quantity}
+                  onChangeText={(value) => setField("quantity", value)}
+                  placeholder={quantityUnit === "quintal" ? "e.g. 2.5" : "e.g. 250"}
+                  keyboardType="decimal-pad"
+                />
+                <InputField
+                  label="YOUR PRICE"
+                  error={fieldErrors.offeredPricePerKg}
+                  fieldRef={fieldRef("offeredPricePerKg")}
+                  value={fields.offeredPricePerKg}
+                  onChangeText={(value) => setField("offeredPricePerKg", value)}
+                  placeholder={offerPriceFromBase(price.basePricePerKg)}
+                  prefix="₹"
+                  unit="/kg"
+                  returnKeyType="done"
+                  keyboardType="decimal-pad"
+                />
+                {hasEstimate ? (
                   <View style={[styles.totalBox, { backgroundColor: theme.accentSoft }]}>
                     <ThemedText type="label" themeColor="textSecondary">
                       ESTIMATED VALUE
@@ -930,74 +793,206 @@ export default function QuoteScreen() {
                     <ThemedText type="small" themeColor="textSecondary">
                       {estimateWorking}
                     </ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      You are paid for the weight measured at pickup, so the final amount may differ.
-                    </ThemedText>
                   </View>
-                  <ReviewSection title="YOUR COCOA" onChange={() => showStep(0, true)}>
-                    <ReviewRow
-                      label="Quantity"
-                      value={
-                        quantityUnit === "quintal" ? `${quantityLabel} (${formatAmount(quantityKg)} kg)` : quantityLabel
-                      }
-                    />
-                    <ReviewRow
-                      label="Your price"
-                      value={
-                        quantityUnit === "quintal" && hasPrice
-                          ? `₹${fields.offeredPricePerKg} per kg (${pricePerQuintal} per quintal)`
-                          : `₹${fields.offeredPricePerKg} per kg`
-                      }
-                    />
-                  </ReviewSection>
-                  <ReviewSection title="BEAN QUALITY" onChange={() => showStep(1, true)}>
-                    <ReviewRow label="Moisture" value={`${fields.moisturePercent}%`} />
-                    <ReviewRow label="Bean count" value={`${fields.beanCountPer100g} per 100 g`} />
-                  </ReviewSection>
-                  <ReviewSection title="PICKUP" onChange={() => showStep(2, true)}>
-                    <ReviewRow label="Ready on" value={fields.readyOn ? formatDateForIndia(fields.readyOn) : ""} />
-                    <ReviewRow label="Address" value={pickupSummary} />
-                    {usingNewAddress ? (
-                      <ThemedText type="small" themeColor="textSecondary">
-                        We&apos;ll save this address for next time.
-                      </ThemedText>
-                    ) : null}
-                  </ReviewSection>
-                  <FormError message={error} />
-                  <Button
-                    label={revisingId ? "Save changes" : "Submit quote"}
-                    onPress={confirmSubmission}
-                    loading={submitting}
-                  />
-                </Card>
-              )}
-            </Animated.View>
-          )}
-
-          {inForm && step !== REVIEW ? (
-            <View style={styles.actions}>
-              <FormError message={error} />
-              <View style={styles.actionRow}>
-                {/* Only between steps of a new offer; after a Change the main button already returns to the review. */}
-                {previousStep !== null && !returnToReview ? (
-                  <Button
-                    label="←  Back"
-                    variant="outline"
-                    style={styles.backAction}
-                    onPress={() => showStep(previousStep)}
-                  />
                 ) : null}
-                <Button
-                  label={returnToReview ? "Back to review" : revising || step === 2 ? "Review  →" : "Next  →"}
-                  style={styles.nextAction}
-                  onPress={continueFromStep}
-                  disabled={step === 2 && (addressesLoading || Boolean(addressesError))}
+              </Card>
+            ) : step === 1 ? (
+              <Card style={styles.formCard}>
+                <ThemedText themeColor="textSecondary">
+                  {qualityFromLastQuote
+                    ? "Filled in from your last quote. Change them if these beans are different."
+                    : "Check a sample of the beans you are selling. The buying team confirms these at pickup."}
+                </ThemedText>
+                <InputField
+                  label="BEAN MOISTURE (%)"
+                  error={fieldErrors.moisturePercent}
+                  fieldRef={fieldRef("moisturePercent")}
+                  value={fields.moisturePercent}
+                  onChangeText={(value) => setField("moisturePercent", value)}
+                  placeholder="e.g. 7.5"
+                  hint="The reading from a moisture meter."
+                  keyboardType="decimal-pad"
                 />
-              </View>
+                <InputField
+                  label="BEAN COUNT PER 100 G"
+                  error={fieldErrors.beanCountPer100g}
+                  fieldRef={fieldRef("beanCountPer100g")}
+                  value={fields.beanCountPer100g}
+                  onChangeText={(value) => setField("beanCountPer100g", value)}
+                  placeholder="e.g. 110"
+                  hint="Weigh 100 g of beans and count them."
+                  returnKeyType="done"
+                  keyboardType="number-pad"
+                />
+              </Card>
+            ) : step === 2 ? (
+              <Card style={styles.formCard}>
+                <View ref={fieldRef("readyOn")} style={styles.field}>
+                  <ThemedText type="label" themeColor="textSecondary">
+                    WHEN WILL IT BE READY?
+                  </ThemedText>
+                  <ChoiceRow
+                    options={[
+                      { value: "today", label: "Today" },
+                      { value: "tomorrow", label: "Tomorrow" },
+                      {
+                        value: "other",
+                        // Once picked, the button shows the day itself.
+                        label: readyChoice === "other" ? formatDateForIndia(fields.readyOn) : "Another day",
+                      },
+                    ]}
+                    value={readyChoice}
+                    onChange={chooseReadyDay}
+                  />
+                  <DatePicker
+                    open={datePickerOpen}
+                    value={readyChoice === "other" ? fields.readyOn : ""}
+                    minimumDate={today}
+                    onChoose={(value) => {
+                      setDatePickerOpen(false);
+                      setField("readyOn", value);
+                    }}
+                    onClose={() => setDatePickerOpen(false)}
+                  />
+                  <FieldError message={fieldErrors.readyOn} />
+                </View>
+                <View ref={fieldRef("pickupAddress")} style={styles.field}>
+                  <ThemedText type="label" themeColor="textSecondary">
+                    WHERE SHOULD WE COLLECT IT?
+                  </ThemedText>
+                  {addressesLoading ? (
+                    <ActivityIndicator />
+                  ) : addressesError ? (
+                    <>
+                      <ThemedText type="small" themeColor="textSecondary">{addressesError}</ThemedText>
+                      <Button label="Retry" variant="outline" onPress={() => void addressQuery.refetch()} />
+                    </>
+                  ) : (
+                    <>
+                      {addresses.length > 0 ? (
+                        <AddressPicker
+                          addresses={addresses}
+                          selectedId={selectedAddressId}
+                          onSelect={(id) => {
+                            setSelectedAddressId(id);
+                            setDirty(true);
+                            setFieldErrors((current) => ({
+                              ...current,
+                              pickupAddress: undefined,
+                              addressLabel: undefined,
+                              addressText: undefined,
+                            }));
+                          }}
+                          allowNew
+                        />
+                      ) : (
+                        <ThemedText type="small" themeColor="textSecondary">
+                          Add the address the driver should come to. We&apos;ll save it for next time.
+                        </ThemedText>
+                      )}
+                      <FieldError message={fieldErrors.pickupAddress} />
+                      {usingNewAddress ? (
+                        // The scroll target for a problem in the new address's name or text.
+                        <View
+                          ref={(node) => {
+                            fieldRef("addressLabel")(node);
+                            fieldRef("addressText")(node);
+                          }}
+                        >
+                          <AddressFields
+                            value={newAddress}
+                            onChange={(value, changed) => {
+                              setNewAddress(value);
+                              setDirty(true);
+                              const key = changed === "label" ? "addressLabel" : "addressText";
+                              setFieldErrors((current) => ({ ...current, [key]: undefined }));
+                            }}
+                            errors={{ label: fieldErrors.addressLabel, address: fieldErrors.addressText }}
+                          />
+                        </View>
+                      ) : null}
+                    </>
+                  )}
+                </View>
+              </Card>
+            ) : (
+              <Card style={styles.formCard}>
+                <View style={[styles.totalBox, { backgroundColor: theme.accentSoft }]}>
+                  <ThemedText type="label" themeColor="textSecondary">
+                    ESTIMATED VALUE
+                  </ThemedText>
+                  <ThemedText type="figure">{formatRupees(estimatedTotal)}</ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {estimateWorking}
+                  </ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    You are paid for the weight measured at pickup, so the final amount may differ.
+                  </ThemedText>
+                </View>
+                <ReviewSection title="YOUR COCOA" onChange={() => showStep(0, true)}>
+                  <ReviewRow
+                    label="Quantity"
+                    value={
+                      quantityUnit === "quintal" ? `${quantityLabel} (${formatAmount(quantityKg)} kg)` : quantityLabel
+                    }
+                  />
+                  <ReviewRow
+                    label="Your price"
+                    value={
+                      quantityUnit === "quintal" && hasPrice
+                        ? `₹${fields.offeredPricePerKg} per kg (${pricePerQuintal} per quintal)`
+                        : `₹${fields.offeredPricePerKg} per kg`
+                    }
+                  />
+                </ReviewSection>
+                <ReviewSection title="BEAN QUALITY" onChange={() => showStep(1, true)}>
+                  <ReviewRow label="Moisture" value={`${fields.moisturePercent}%`} />
+                  <ReviewRow label="Bean count" value={`${fields.beanCountPer100g} per 100 g`} />
+                </ReviewSection>
+                <ReviewSection title="PICKUP" onChange={() => showStep(2, true)}>
+                  <ReviewRow label="Ready on" value={fields.readyOn ? formatDateForIndia(fields.readyOn) : ""} />
+                  <ReviewRow label="Address" value={pickupSummary} />
+                  {usingNewAddress ? (
+                    <ThemedText type="small" themeColor="textSecondary">
+                      We&apos;ll save this address for next time.
+                    </ThemedText>
+                  ) : null}
+                </ReviewSection>
+                <FormError message={error} />
+                <Button
+                  label={revisingId ? "Save changes" : "Submit quote"}
+                  onPress={confirmSubmission}
+                  loading={submitting}
+                />
+              </Card>
+            )}
+          </Animated.View>
+        )}
+
+        {inForm && step !== REVIEW ? (
+          <View style={styles.actions}>
+            <FormError message={error} />
+            <View style={styles.actionRow}>
+              {/* Only between steps of a new offer; after a Change the main button already returns to the review. */}
+              {previousStep !== null && !returnToReview ? (
+                <Button
+                  label="←  Back"
+                  variant="outline"
+                  style={styles.backAction}
+                  onPress={() => showStep(previousStep)}
+                />
+              ) : null}
+              <Button
+                label={returnToReview ? "Back to review" : revising || step === 2 ? "Review  →" : "Next  →"}
+                style={styles.nextAction}
+                onPress={continueFromStep}
+                disabled={step === 2 && (addressesLoading || Boolean(addressesError))}
+              />
             </View>
-          ) : null}
-        </ScrollView>
-      </KeyboardAvoidingView>
+          </View>
+        ) : null}
+      </KeyboardAwareScrollView>
+      <FormKeyboardToolbar />
       <ConfirmDialog
         visible={confirmingDiscard}
         title={revisingId ? "Discard your changes?" : "Discard this offer?"}

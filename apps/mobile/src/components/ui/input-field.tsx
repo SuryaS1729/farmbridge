@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { StyleSheet, TextInput, View, type HostInstance, type TextInputProps } from "react-native";
 
 import { FieldError } from "@/components/form-errors";
+import { enterKeyProps } from "@/components/ui/form-keyboard-toolbar";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Space } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
@@ -18,6 +19,8 @@ export function InputField({
   fieldRef,
   accessory,
   unit,
+  prefix,
+  returnKeyType = "next",
   inputProps,
 }: {
   label: string;
@@ -32,8 +35,15 @@ export function InputField({
   fieldRef?: (node: HostInstance | null) => void;
   /** Shown at the right of the label, e.g. a unit switch. */
   accessory?: ReactNode;
-  /** Shown in a segment at the right of the input, e.g. "kg" or "quintal". */
+  /** Shown in a segment at the right of the input, e.g. "kg", "quintal" or "/kg". */
   unit?: string;
+  /** A symbol shown inside the input before the text, e.g. "₹". */
+  prefix?: string;
+  /**
+   * What the keyboard's enter key does: "next" (default) moves to the next field and keeps the
+   * keyboard open; "done" closes it. Use "done" on the last field of a step.
+   */
+  returnKeyType?: "next" | "done";
   /** Extra TextInput props, e.g. autoCapitalize or maxLength. */
   inputProps?: TextInputProps;
 }) {
@@ -56,6 +66,16 @@ export function InputField({
           },
         ]}
       >
+        {prefix ? (
+          <ThemedText
+            style={styles.prefix}
+            themeColor="textSecondary"
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+          >
+            {prefix}
+          </ThemedText>
+        ) : null}
         <TextInput
           {...inputProps}
           value={value}
@@ -63,8 +83,9 @@ export function InputField({
           placeholder={placeholder}
           placeholderTextColor={theme.textSecondary}
           keyboardType={keyboardType}
-          style={[styles.input, { color: theme.text }]}
-          accessibilityLabel={unit ? `${label}, in ${unit}` : label}
+          {...enterKeyProps(returnKeyType)}
+          style={[styles.input, prefix ? styles.inputAfterPrefix : null, { color: theme.text }]}
+          accessibilityLabel={unitAccessibilityLabel(label, unit)}
           accessibilityHint={hint}
         />
         {unit ? (
@@ -85,6 +106,12 @@ export function InputField({
       <FieldError message={error} />
     </View>
   );
+}
+
+/** Reads "/kg" as "per kg" and "kg" as "in kg" for screen readers. */
+function unitAccessibilityLabel(label: string, unit?: string) {
+  if (!unit) return label;
+  return unit.startsWith("/") ? `${label}, per ${unit.slice(1)}` : `${label}, in ${unit}`;
 }
 
 const styles = StyleSheet.create({
@@ -109,10 +136,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderLeftWidth: 1,
   },
+  prefix: {
+    alignSelf: "center",
+    paddingLeft: Space.three,
+    fontFamily: Fonts.sans,
+    fontSize: 17,
+  },
   input: {
     flex: 1,
     paddingHorizontal: Space.three,
     fontFamily: Fonts.sans,
     fontSize: 17,
   },
+  inputAfterPrefix: { paddingLeft: Space.one },
 });
